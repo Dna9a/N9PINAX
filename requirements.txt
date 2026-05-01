@@ -1,0 +1,10 @@
+# i need to add more requirements :
+flake8
+mypy
+scapy
+# pip install scapy flask flask-login flask-limiter bcrypt flask-socketio 
+flask
+flask-login
+flask-limiter
+bcrypt
+flask-socketio
