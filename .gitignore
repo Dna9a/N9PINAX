@@ -1,0 +1,39 @@
+# ── Python ────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual environments ───────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── Scanner data (may contain real network info) ──
+scanner/data/
+export_*.json
+export_*.csv
+scanner.log
+*.log
+
+# ── Secrets / credentials ─────────────────────
+.env
+.env.*
+*.key
+*.pem
+
+# ── IDE ───────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────
+.DS_Store
+Thumbs.db

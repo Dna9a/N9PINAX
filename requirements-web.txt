@@ -1,0 +1,9 @@
+# PFE Cybersécurité — Network Security Scanner
+# Optional web / dashboard dependencies
+# Install with: pip install -r requirements-web.txt
+
+flask>=3.0.0          # Web framework for dashboard/API
+flask-login>=0.6.0    # User authentication for Flask
+flask-limiter>=3.5.0  # Rate limiting for API endpoints
+flask-socketio>=5.3.0 # WebSocket support for real-time updates
+bcrypt>=4.1.0         # Secure password hashing

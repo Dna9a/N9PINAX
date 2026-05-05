@@ -1,21 +1,3 @@
-```
-scanner/
-├── core/ ✅ DONE
-│   ├── arp_scan.py          ← ✅ DONE
-│   └── port_scan.py         ← ✅ DONE
-│
-├── fingerprint/
-│   ├── mac_lookup.py        ← pas encore touché
-│   ├── tcp_fingerprint.py   ← pas encore touché
-│   ├── dhcp_fingerprint.py  ← pas encore touché
-│   ├── http_banner.py       ← pas encore touché
-│   └── os_classifier.py     ← pas encore touché
-│
-├── storage.py               ← pas encore touché
-├── models.py                ← ✅ DONE
-└── main.py                  ← en dernier
-```
-
 ```markdown
 projet/
 ├── scanner/          # Dna9a (Python/Scapy)
@@ -25,91 +7,17 @@ projet/
 ├── Makefile
 └── README.md
 
-
 scanner/
-│
-├── main.py                  # Point d'entrée — orchestre tout
-│
-├── core/                    # Fonctions réseau de base
-│   ├── __init__.py
-│   ├── arp_scan.py          # Découverte des hôtes (ARP)
-│   └── port_scan.py         # Scan des ports TCP
-│
-├── fingerprint/             # Identification avancée
-│   ├── __init__.py
-│   ├── mac_lookup.py        # MAC → Fabricant (OUI)
-│   ├── tcp_fingerprint.py   # TTL + TCP options → OS
-│   ├── dhcp_fingerprint.py  # DHCP options → type d'appareil
-│   ├── http_banner.py       # HTTP headers → OS/service
-│   └── os_classifier.py     # Combine tout → verdict final
-│
-├── storage.py               # Sauvegarde SQLite + export
-├── models.py                # Pydantic — Device, Port, etc.
-│
+├── main.py              # Point d'entrée — lance le scan complet
+├── arp_scan.py          # Étape 1.1 — découverte des hôtes
+├── oui_lookup.py        # Étape 1.2 — MAC → Fabricant
+├── port_scan.py         # Étape 1.3 — scan des ports
+├── firewall_detect.py   # Étape 1.4 — détection pare-feu
+├── storage.py           # Étape 1.5 — sauvegarde JSON/SQLite
+├── models.py            # Structure des données (dataclasses)
 └── data/
-    ├── oui.txt                  # Base IEEE MAC (téléchargée 1x)
-    ├── tcp_signatures.json      # Signatures TCP par OS
-    └── dhcp_fingerprints.json   # Base fingerbank
+    └── oui.txt          # Base IEEE téléchargée une fois
 ```
-```
-main.py
-  │
-  ├─→ core/arp_scan.py
-  │     └─→ retourne liste de Device { ip, mac }
-  │
-  ├─→ core/port_scan.py
-  │     └─→ enrichit chaque Device avec { ports[] }
-  │
-  ├─→ fingerprint/mac_lookup.py
-  │     └─→ enrichit Device avec { mac_vendor }
-  │
-  ├─→ fingerprint/tcp_fingerprint.py
-  │     └─→ enrichit Device avec { ttl, window, tcp_options }
-  │
-  ├─→ fingerprint/dhcp_fingerprint.py
-  │     └─→ enrichit Device avec { dhcp_options }
-  │
-  ├─→ fingerprint/http_banner.py       (seulement si port 80/443 ouvert)
-  │     └─→ enrichit Device avec { banner }
-  │
-  ├─→ fingerprint/os_classifier.py
-  │     └─→ prend TOUT ce qui a été collecté
-  │         retourne FingerprintResult { os_family, os_version,
-  │                                      device_type, confidence }
-  │
-  └─→ storage.py
-        └─→ sauvegarde le ScanResult complet en SQLite
-```
-```
-Semaine 1 — Le scan brut fonctionne
-  → models.py
-  → core/arp_scan.py
-  → core/port_scan.py
-  → storage.py (juste save + read)
-
-Semaine 2 — L'identification
-  → fingerprint/mac_lookup.py      (facile, juste un dict)
-  → fingerprint/tcp_fingerprint.py (le plus complexe)
-  → fingerprint/http_banner.py     (facile, juste un GET)
-  → fingerprint/dhcp_fingerprint.py
-
-Semaine 3 — Le cerveau + intégration
-  → fingerprint/os_classifier.py   (combine tout)
-  → main.py qui relie tout
-  → tests sur vrai réseau
-```
-```
-1. core/arp_scan.py          → découverte des hôtes, base de tout
-2. fingerprint/mac_lookup.py → facile, juste un dict + fichier IEEE
-3. core/port_scan.py         → enrichit les Device avec les ports
-4. fingerprint/http_banner.py→ facile, dépend des ports ouverts
-5. fingerprint/tcp_fingerprint.py → le plus complexe
-6. fingerprint/dhcp_fingerprint.py
-7. fingerprint/os_classifier.py   → combine tout, en dernier
-8. storage.py                → sauvegarde les ScanResult
-9. main.py                   → orchestre tout
-```
-
 ## Algo de chaque fichier
 
 ### models.py — Commence par ici
