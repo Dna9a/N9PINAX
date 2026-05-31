@@ -1,0 +1,87 @@
+services:
+  scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: na9a-scanner:latest
+    container_name: na9a-scanner
+    restart: unless-stopped
+
+    # Raw packet operations (ARP, ICMP, SYN scan) require these Linux capabilities.
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+    # Host networking: the container shares the host's network stack so Scapy
+    # sees the real LAN interfaces (e.g. wlan0 / eth0) instead of the Docker
+    # bridge. This is required for ARP discovery to find actual LAN devices.
+    #
+    # Side-effects:
+    #   • 'ports:' is ignored — the app binds directly on the host's 0.0.0.0:8000
+    #   • The 'redis' service hostname does not resolve; use 127.0.0.1 instead
+    #     (Docker maps redis:6379 → 127.0.0.1:6379 on the host)
+    network_mode: host
+
+    # Baseline container env — safe defaults from example.env, overridden by
+    # per-deployment values resolved from the project .env file.
+    env_file:
+      - example.env
+    environment:
+      # API server
+      SCANNER_API_HOST: "${SCANNER_API_HOST:-0.0.0.0}"
+      SCANNER_API_PORT: "${SCANNER_API_PORT:-8000}"
+      SCANNER_API_CORS: "${SCANNER_API_CORS:-*}"
+
+      # Security — set a strong random secret in production
+      SCANNER_JWT_SECRET: "${SCANNER_JWT_SECRET}"
+
+      # Paths inside the container (mapped to the named volume below)
+      SCANNER_DB_PATH: /data/scans.db
+      SCANNER_REPORT_PATH: /data/scan_report.txt
+      SCANNER_LOG_PATH: /data/scanner.log
+
+      # Redis — with host networking the container sees the host's loopback,
+      # so we address Redis by 127.0.0.1 (not the 'redis' service hostname).
+      REDIS_URL: "${REDIS_URL:-redis://127.0.0.1:6379/0}"
+
+      # Scan behaviour (optional overrides)
+      SCANNER_PORT_TIMEOUT: "${SCANNER_PORT_TIMEOUT:-0.5}"
+      SCANNER_MAX_WORKERS_PORTS: "${SCANNER_MAX_WORKERS_PORTS:-50}"
+      SCANNER_RATE_LIMIT_PPS: "${SCANNER_RATE_LIMIT_PPS:-500}"
+      SCANNER_ALERTS: "${SCANNER_ALERTS:-true}"
+
+    depends_on:
+      - redis
+
+    volumes:
+      - scanner_data:/data
+
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: na9a-redis
+    restart: unless-stopped
+    # Bound to the host's loopback only — accessible to the scanner container
+    # via host networking (127.0.0.1:6379) but not exposed to the LAN.
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  scanner_data:
+    driver: local
+  redis_data:
+    driver: local

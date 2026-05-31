@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan - N9pinax</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="dashboard-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="btn btn-icon btn-ghost" onclick="toggleSidebar()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="topbar-right">
+          <div class="flex items-center gap-2" title="Live connection">
+            <span class="status-dot offline" id="sseDot"></span>
+            <span class="text-xs text-muted" id="sseLabel">connecting…</span>
+          </div>
+          <button class="btn btn-icon btn-ghost" id="themeToggle">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sun"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-moon hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Network Scan</h1>
+            <p class="page-subtitle">Discover and analyze network devices</p>
+          </div>
+        </div>
+
+        <!-- Scan Configuration -->
+        <div class="card mb-6">
+          <div class="card-header"><h3>Scan Configuration</h3></div>
+          <div class="card-body">
+            <form id="scanForm" class="flex flex-col gap-4">
+              <div class="form-group">
+                <label class="form-label" for="targetRange">Target Range (CIDR — leave blank to auto-detect)</label>
+                <input type="text" class="form-input" id="targetRange" placeholder="192.168.1.0/24">
+              </div>
+              <div class="flex items-center gap-4 flex-wrap">
+                <label class="flex items-center gap-2"><input type="checkbox" class="form-checkbox" id="optResolve" checked><span class="text-sm">Resolve hostnames</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" class="form-checkbox" id="optUdp"><span class="text-sm">UDP probes</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" class="form-checkbox" id="optDhcp"><span class="text-sm">Passive DHCP fingerprint</span></label>
+              </div>
+              <div class="flex gap-3">
+                <button type="submit" class="btn btn-primary" id="startScanBtn">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  Start Scan
+                </button>
+                <button type="button" class="btn btn-danger hidden" id="stopScanBtn">Reset View</button>
+              </div>
+              <div class="text-xs text-muted" id="jobInfo"></div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Scan Progress -->
+        <div class="scan-progress hidden" id="scanProgress">
+          <div class="scan-status">
+            <div class="scan-spinner"></div>
+            <span class="text-sm font-medium" id="scanStatusText">Scanning…</span>
+          </div>
+          <div class="progress mb-3"><div class="progress-bar" id="progressBar" style="width: 0%"></div></div>
+          <div class="scan-stats">
+            <div class="scan-stat"><span class="scan-stat-value" id="stepLabel">—</span><span class="scan-stat-label">Current Step</span></div>
+            <div class="scan-stat"><span class="scan-stat-value" id="devicesFound">0</span><span class="scan-stat-label">Devices Found</span></div>
+            <div class="scan-stat"><span class="scan-stat-value" id="elapsedTime">00:00</span><span class="scan-stat-label">Elapsed</span></div>
+          </div>
+        </div>
+
+        <!-- Completion summary + export -->
+        <div class="card mb-6 hidden" id="summaryCard">
+          <div class="card-body">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div id="summaryText" class="text-sm"></div>
+              <a href="devices.html" class="btn btn-sm btn-primary">View Devices</a>
+            </div>
+            <div class="mt-4 pt-4" style="border-top:1px solid var(--border-primary)">
+              <div class="text-xs text-muted mb-2 font-medium">Export Results</div>
+              <div class="flex gap-2 flex-wrap">
+                <button class="btn btn-sm btn-secondary" id="exportJsonBtn" disabled>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                  Download JSON
+                </button>
+                <button class="btn btn-sm btn-secondary" id="exportCsvBtn" disabled>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>
+                  Download CSV
+                </button>
+                <button class="btn btn-sm btn-secondary" id="exportPdfBtn" disabled>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line><line x1="12" y1="9" x2="12" y2="9"></line></svg>
+                  Download PDF Report
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live feed + log -->
+        <div class="grid-2 mb-6">
+          <div class="card">
+            <div class="card-header flex items-center justify-between">
+              <h3>Live Device Feed</h3>
+              <span class="badge badge-primary" id="deviceCount">0 devices</span>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-container" style="max-height: 360px; overflow-y: auto;">
+                <table class="table">
+                  <thead><tr><th>IP</th><th>MAC</th><th>Vendor</th><th>Risk</th></tr></thead>
+                  <tbody id="liveDevices">
+                    <tr><td colspan="4" class="text-center text-muted py-4">No devices yet</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header flex items-center justify-between">
+              <h3>Scan Log</h3>
+              <button class="btn btn-sm btn-ghost" id="clearLogBtn">Clear</button>
+            </div>
+            <div class="card-body p-0">
+              <div class="console" id="scanLog" style="max-height: 360px;">
+                <div class="console-line"><span class="console-time">[--:--:--]</span><span class="console-message">Ready to start scan</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- History -->
+        <div class="card">
+          <div class="card-header"><h3>Recent Scans</h3></div>
+          <div class="card-body p-0">
+            <div class="table-container">
+              <table class="table">
+                <thead><tr><th>Timestamp</th><th>Network</th><th>Hosts</th><th>Duration</th></tr></thead>
+                <tbody id="scanHistory"><tr><td colspan="4" class="text-center text-muted py-4">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="../js/chrome.js"></script>
+  <script src="../js/scan.js"></script>
+</body>
+</html>

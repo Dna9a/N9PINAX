@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notes - N9pinax</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="dashboard-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="btn btn-icon btn-ghost" onclick="toggleSidebar()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-icon btn-ghost" id="themeToggle">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sun"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-moon hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Notes</h1>
+            <p class="page-subtitle">Operator annotations — auto-saved, exportable to PDF</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-secondary" id="exportAllBtn">Export All (PDF)</button>
+            <button class="btn btn-primary" id="newNoteBtn">New Note</button>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:1.5rem; align-items:flex-start;">
+          <!-- Note list -->
+          <div class="card" style="flex:1 1 300px; min-width:280px; max-width:380px;">
+            <div class="card-header">
+              <div class="search-box" style="width:100%;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" placeholder="Search notes…" id="noteSearch">
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <div id="noteList" style="max-height: 60vh; overflow-y:auto;">
+                <div class="text-muted text-sm p-4">Loading…</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Editor -->
+          <div class="card" style="flex:2 1 420px; min-width:280px;">
+            <div class="card-body" id="editorEmpty">
+              <div class="text-center text-muted py-4">Select a note, or create a new one.</div>
+            </div>
+            <div class="card-body hidden" id="editor">
+              <div class="flex items-center justify-between mb-3">
+                <input type="text" class="form-input" id="noteTitle" placeholder="Title" style="font-weight:600;">
+                <span class="text-xs text-muted ml-2" id="saveStatus" style="white-space:nowrap;">—</span>
+              </div>
+              <div class="grid-2 gap-4 mb-3">
+                <div class="form-group">
+                  <label class="form-label" for="noteScan">Link to scan (optional)</label>
+                  <select class="form-select" id="noteScan"><option value="">— none —</option></select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="tagInput">Tags (comma-separated)</label>
+                  <input type="text" class="form-input" id="tagInput" placeholder="recon, todo">
+                  <div id="tagChips" class="flex gap-1 flex-wrap" style="margin-top:.4rem;"></div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="noteContent">Content</label>
+                <textarea class="form-input" id="noteContent" rows="14" placeholder="Write your note…"></textarea>
+              </div>
+              <div class="flex gap-2">
+                <button class="btn btn-secondary" id="exportNoteBtn">Export PDF</button>
+                <button class="btn btn-danger" id="deleteNoteBtn">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="../js/chrome.js"></script>
+  <script src="../js/notes.js"></script>
+</body>
+</html>

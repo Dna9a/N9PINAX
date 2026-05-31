@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - N9pinax</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="dashboard-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="btn btn-icon btn-ghost" onclick="toggleSidebar()" id="sidebarToggle">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+          <div class="search-box">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" placeholder="Search devices, IPs...">
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="flex items-center gap-2" title="Live connection">
+            <span class="status-dot offline" id="sseDot"></span>
+            <span class="text-xs text-muted" id="sseLabel">connecting…</span>
+          </div>
+          <button class="btn btn-icon btn-ghost" id="themeToggle">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-sun"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-moon hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Dashboard</h1>
+            <p class="page-subtitle">Network overview and security status</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary" id="quickScanBtn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+              Quick Scan
+            </button>
+            <a href="scan.html" class="btn btn-secondary">Advanced Scan</a>
+          </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-header"><div class="stat-icon primary"></div></div>
+            <div class="stat-value" id="statTotalDevices">—</div>
+            <div class="stat-label">Total Devices</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-header"><div class="stat-icon success"></div></div>
+            <div class="stat-value" id="statOnline">—</div>
+            <div class="stat-label">Online Hosts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-header"><div class="stat-icon warning"></div></div>
+            <div class="stat-value" id="statOpenPorts">—</div>
+            <div class="stat-label">Open Ports</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-header"><div class="stat-icon danger"></div></div>
+            <div class="stat-value" id="statAlerts">—</div>
+            <div class="stat-label">Unresolved Alerts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-header"><div class="stat-icon primary"></div></div>
+            <div class="stat-value" id="statLastScan">—</div>
+            <div class="stat-label">Last Scan</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-header"><div class="stat-icon danger"></div></div>
+            <div class="stat-value" id="statHighRisk">—</div>
+            <div class="stat-label">High-Risk Devices</div>
+          </div>
+        </div>
+
+        <!-- Risk breakdown -->
+        <div class="card mb-6">
+          <div class="card-header"><h3>Risk Breakdown (last scan)</h3></div>
+          <div class="card-body">
+            <div class="flex gap-4 flex-wrap" id="riskBreakdown">
+              <span class="badge badge-success">Low: <span id="riskLow">0</span></span>
+              <span class="badge badge-warning">Medium: <span id="riskMedium">0</span></span>
+              <span class="badge badge-danger">High: <span id="riskHigh">0</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid-2 mb-6">
+          <div class="card">
+            <div class="card-header flex items-center justify-between"><h3>Device Vendors</h3></div>
+            <div class="card-body"><div class="chart-container"><canvas id="vendorChart"></canvas></div></div>
+          </div>
+          <div class="card">
+            <div class="card-header flex items-center justify-between"><h3>Top Open Ports</h3></div>
+            <div class="card-body"><div class="chart-container"><canvas id="portChart"></canvas></div></div>
+          </div>
+        </div>
+
+        <!-- Alerts & Devices Row -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header flex items-center justify-between">
+              <h3>Recent Alerts</h3>
+              <a href="alerts.html" class="text-sm">View all</a>
+            </div>
+            <div class="card-body">
+              <div class="timeline" id="recentAlerts">
+                <div class="text-muted text-sm">Loading…</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header flex items-center justify-between">
+              <h3>Recent Devices</h3>
+              <a href="devices.html" class="text-sm">View all</a>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-container">
+                <table class="table">
+                  <thead><tr><th>IP Address</th><th>Hostname</th><th>Risk</th><th>Ports</th></tr></thead>
+                  <tbody id="recentDevices">
+                    <tr><td colspan="4" class="text-center text-muted py-4">Loading…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="../js/chrome.js"></script>
+  <script src="../js/dashboard.js"></script>
+</body>
+</html>

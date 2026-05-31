@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - N9pinax</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="dashboard-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="btn btn-icon btn-ghost" onclick="toggleSidebar()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-icon btn-ghost" id="themeToggle">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sun"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-moon hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Administration</h1>
+            <p class="page-subtitle">Users, activity, and platform settings</p>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active" data-tab="users">Users</div>
+          <div class="tab" data-tab="activity">Activity Log</div>
+          <div class="tab" data-tab="network">Network Binding</div>
+        </div>
+
+        <!-- Users -->
+        <div class="tab-content" id="users">
+          <div class="card mb-6">
+            <div class="card-header"><h3 class="card-title">Create User</h3></div>
+            <div class="card-body">
+              <form id="createUserForm" class="grid-3 gap-4">
+                <div class="form-group">
+                  <label class="form-label" for="newEmail">Username or email</label>
+                  <input type="text" class="form-input" id="newEmail" placeholder="username or email" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="newPassword">Password</label>
+                  <input type="password" class="form-input" id="newPassword" placeholder="min 6 characters" minlength="6" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="newRole">Role</label>
+                  <select class="form-select" id="newRole">
+                    <option value="analyst">Analyst</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div class="form-group" style="align-self:end;">
+                  <button type="submit" class="btn btn-primary" id="createUserBtn">Add User</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-body p-0">
+              <div class="table-container">
+                <table class="table">
+                  <thead><tr><th>User ID</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead>
+                  <tbody id="usersBody"><tr><td colspan="4" class="text-center text-muted py-4">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Activity -->
+        <div class="tab-content hidden" id="activity">
+          <div class="card">
+            <div class="card-header flex items-center justify-between">
+              <h3>Activity Log</h3>
+              <span class="text-xs text-muted">auto-refresh 30s</span>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-container">
+                <table class="table">
+                  <thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Detail</th><th>IP</th></tr></thead>
+                  <tbody id="activityBody"><tr><td colspan="5" class="text-center text-muted py-4">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Network Binding -->
+        <div class="tab-content hidden" id="network">
+          <div class="card" id="networkBindingCard">
+            <div class="card-header">
+              <h3 class="card-title">Network Binding</h3>
+              <p class="card-subtitle">Set the IP address used to reach this platform from the network</p>
+            </div>
+            <div class="card-body">
+              <div class="current-binding mb-4" id="currentBinding"></div>
+              <div class="form-group">
+                <label class="form-label" for="platformIp">Platform IP address</label>
+                <input type="text" id="platformIp" class="form-input"
+                       placeholder="e.g. 192.168.1.50  — leave blank for auto (same host)">
+                <p class="form-hint">
+                  Enter the LAN IP of the machine running N9pinax. Other devices on
+                  the network will use this address to reach the platform.
+                  Leave blank to use the current browser host (default).
+                </p>
+              </div>
+              <div class="flex gap-2">
+                <button class="btn btn-primary" id="saveBindingBtn">Apply &amp; Reconnect</button>
+                <button class="btn btn-secondary" id="clearBindingBtn">Reset to Default</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="../js/chrome.js"></script>
+  <script src="../js/admin.js"></script>
+</body>
+</html>

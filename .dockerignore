@@ -1,0 +1,5 @@
+scan_report.txt
+scanner/data/scans.db
+scanner.log
+.venv/
+__pycache__/
