@@ -30,7 +30,7 @@ SCANNER_PKG       := scanner
 # Phony targets
 # ─────────────────────────────────────────────
 
-.PHONY: help up down restart logs build uninstall status start stop install virgin dev test run run-sudo run-backend run-backend-sudo run-backend-reload setup-caps clean clean-py clean-web clean-all lint fmt check all
+.PHONY: help up down restart logs build uninstall purge status start stop install virgin dev test run run-sudo run-backend run-backend-sudo run-backend-reload setup-caps clean clean-py clean-web clean-all lint fmt check all
 
 
 # ─────────────────────────────────────────────
@@ -76,8 +76,7 @@ help:
 	@echo "  make clean         — Remove cache, compiled files, databases"
 	@echo "  make clean-py      — Remove Python caches, venvs, and scanner build artifacts"
 	@echo "  make clean-web     — Remove web build artifacts and uninstall web deps (if venv active)"
-	@echo "  make clean-all     — Full clean: remove caches, web artifacts, venv and build artifacts"
-	@echo ""
+	@echo "  make clean-all     — Full clean: remove caches, web artifacts, venv and build artifacts"	@echo "  make purge         — Clean all scan data (database and results)"	@echo ""
 	@echo "$(GREEN)Meta:$(RESET)"
 	@echo "  make koulxi         — Full setup, test, and run sequence (virgin + install + test + run-backend)"
 	@echo ""
@@ -355,6 +354,13 @@ clean-all: clean-py clean-web clean
 	@echo "$(RED)🧹 Removing venv & build artifacts...   🐪$(RESET)"
 	@rm -rf $(VENV) build dist *.egg-info .coverage htmlcov
 	@echo "$(GREEN)✓ Full clean complete!         🐪$(RESET)"
+
+purge:
+	@echo "$(RED)🧨 Purging all scan data (database and results)...   🐪$(RESET)"
+	@rm -f scanner/data/scans.db*
+	@rm -f scanner/data/hostname_cache.json
+	@rm -f scanner/data/export_*.json scanner/data/export_*.csv
+	@echo "$(GREEN)✓ Data purged!         🐪$(RESET)"
 
 # ─────────────────────────────────────────────
 # Meta targets
