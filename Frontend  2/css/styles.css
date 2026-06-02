@@ -622,8 +622,8 @@ h4 { font-size: 1.125rem; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 2rem;
+  justify-content: space-between;  /* center content, footer at bottom */
+  padding: 2rem 2rem 0;            /* no bottom padding — footer handles it */
   background-color: var(--bg-primary);
   position: relative;
   overflow: hidden;
@@ -709,20 +709,24 @@ h4 { font-size: 1.125rem; }
 
 /* Bottom page footer */
 .login-page-footer {
-  width: 100%;
-  max-width: 400px;
+  width: 100%;                       /* full viewport width */
   border-top: 1px solid var(--border-primary);
-  padding-top: 1.25rem;
-  margin-top: 1rem;
+  padding: 1rem 2rem;
+  margin-top: 2rem;
   position: relative;
   z-index: 1;
+  background-color: var(--bg-secondary);
 }
 
 .login-page-footer-inner {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .login-page-footer-brand {
