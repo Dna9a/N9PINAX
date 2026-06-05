@@ -203,6 +203,6 @@ n9pinax/
 </p> -->
 
 <p align="center">
-  <em>Made with <a href="https://your-link.com"><span style="color:#ff69b4;">Dbvonie</span></a> as part of the PFE for the fucked up ISTA curriculum</em>
+  <em>Made with <a href="https://github.com/Dbvonie"><span style="color:#ff69b4;">Dbvonie</span></a> as part of the PFE for the fucked up ISTA curriculum</em>
 </p>
 
