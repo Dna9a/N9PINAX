@@ -30,9 +30,11 @@
 - [Features](#-features)
 - [Prerequisites](#-prerequisites)
 - [Installation](#-installation)
-- [Configuration](#-configuration)
+- [How to Use the Scan Feature](#-how-to-use-the-scan-feature)
+- [Default Credentials](#-default-credentials)
 - [Architecture](#-architecture)
 - [Demo](#-demo)
+- [Security Warning](#-security-warning)
 
 ---
 
@@ -68,8 +70,7 @@
 
 ## 🔧 Prerequisites
 - Linux (or Windows WSL2) — raw packet scanning requires a Linux network stack
-- Python 3.10+
-- Docker 24+ and Docker Compose v2
+- Docker 24+ and Docker Compose v2 (its okey if not) 
 - Root / sudo privileges for scanning operations
 
 ---
@@ -105,71 +106,129 @@ http://<your-server-ip>:8000
 
 ---
 
-## ⚙️ Configuration
+## How to Use the Scan Feature
 
-All configuration is done via the `.env` file at the project root.
+1. Log in at `http://localhost:8000` with `na9a / 1234`.
+2. Navigate to **Scan** in the sidebar.
+3. Optionally enter a CIDR range (e.g. `192.168.1.0/24`). Leave blank for auto-detect.
+4. Enable optional probes as needed: **Resolve hostnames**, **UDP probes**, **Passive DHCP fingerprint**.
+5. Click **Start Scan**.
+6. Watch the **Live Device Feed** populate in real time as devices are discovered, and the **Scan Log** for step-by-step output.
+7. When the scan completes, the summary card shows hosts found, duration, and alert count.
+8. Click **View Devices** to inspect the full device inventory with risk badges and expandable port details.
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and adjust for production.
 
 | Variable | Default | Description |
-|---|---|---|
-| `TARGET_NETWORK` | `192.168.1.0/24` | CIDR range to scan |
-| `SCAN_INTERVAL` | `60` | Seconds between full discovery sweeps |
-| `DASHBOARD_PORT` | `8000` | Port for the web dashboard |
-| `ALERT_THRESHOLD` | `medium` | Minimum alert severity to report (`low`, `medium`, `high`) |
-| `ENABLE_OS_FINGERPRINT` | `true` | Enable/disable OS fingerprinting via TCP/IP stack analysis |
-| `ENABLE_VENDOR_LOOKUP` | `true` | Enable/disable MAC vendor OUI lookup |
-| `LOG_LEVEL` | `info` | Logging verbosity (`debug`, `info`, `warn`, `error`) |
-| `DATA_RETENTION_DAYS` | `30` | How many days to retain historical scan data |
-| `WEBHOOK_URL` | _(empty)_ | Optional webhook endpoint for alert forwarding |
+|----------|---------|-------------|
+| `SCANNER_JWT_SECRET` | *(required in production)* | JWT signing secret — generate with `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `SCANNER_API_HOST` | `0.0.0.0` | Address the uvicorn server binds to |
+| `SCANNER_API_PORT` | `8000` | Port the API listens on |
+| `SCANNER_API_CORS` | `*` | CORS allowed origins — comma-separated list or `*` |
+| `SCANNER_DB_PATH` | `/data/scans.db` | SQLite database path (inside container) |
+| `SCANNER_REPORT_PATH` | `/data/scan_report.txt` | Plain-text report path |
+| `SCANNER_LOG_PATH` | `/data/scanner.log` | Scanner log path |
+| `REDIS_URL` | `redis://redis:6379/0` | Redis connection URL (optional — app runs without it) |
+| `SCANNER_PORT_TIMEOUT` | `0.5` | Per-port TCP connect timeout (seconds) |
+| `SCANNER_MAX_WORKERS_PORTS` | `50` | Concurrent port-scan threads per host |
+| `SCANNER_RATE_LIMIT_PPS` | `500` | Outbound packets per second (IDS noise reduction) |
+| `SCANNER_ALERTS` | `true` | Enable the SIEM alert engine |
+| `SCANNER_DHCP` | `false` | Enable passive DHCP fingerprinting |
+| `SCANNER_KEEP_LAST_N_SCANS` | `200` | Max scans retained in the database |
+
 
 ### Example `.env`
 
 ```env
-TARGET_NETWORK=10.0.0.0/16
-SCAN_INTERVAL=30
-DASHBOARD_PORT=8000
-ALERT_THRESHOLD=low
-ENABLE_OS_FINGERPRINT=true
-ENABLE_VENDOR_LOOKUP=true
-LOG_LEVEL=info
-DATA_RETENTION_DAYS=90
-WEBHOOK_URL=https://hooks.example.com/alerts
+SCANNER_JWT_SECRET=your_generated_secret_here
+SCANNER_API_HOST=0.0.0.0
+SCANNER_API_PORT=8000
+SCANNER_API_CORS=*
+SCANNER_DB_PATH=/data/scans.db
+SCANNER_REPORT_PATH=/data/scan_report.txt
+SCANNER_LOG_PATH=/data/scanner.log
+REDIS_URL=redis://redis:6379/0
+SCANNER_PORT_TIMEOUT=0.5
+SCANNER_MAX_WORKERS_PORTS=50
+SCANNER_RATE_LIMIT_PPS=500
+SCANNER_ALERTS=true
+SCANNER_DHCP=false
+SCANNER_KEEP_LAST_N_SCANS=200
 ```
+
+---
+
+## Make Commands
+
+| Command | Description |
+|---------|-------------|
+| `make up` | Build images (if needed) and start all containers in detached mode |
+| `make down` | Stop and remove containers |
+| `make restart` | `down` + `up` in one command |
+| `make logs` | Tail live logs from all containers |
+| `make build` | Force rebuild all Docker images without cache |
+| `make status` | Show container status and exposed ports |
+| `make uninstall` | Full removal: containers, images, volumes, networks, project directory (prompts for confirmation) |
+| `make start` | Bootstrap: install Docker if needed, then build and launch (via `deploy.sh`) |
+| `make test` | Run the full pytest suite |
+| `make lint` | Run flake8 + mypy static analysis |
+| `make fmt` | Format code with black + isort |
+| `make clean` | Remove Python caches, `.pyc` files, build artifacts |
+| `make clean-all` | Full clean including virtualenv |
+| `make run-backend` | Start FastAPI backend locally (no Docker) on `0.0.0.0:8000` |
+| `make run-backend-reload` | Same as above with `--reload` for development |
+| `make help` | Show all commands with descriptions |
+
+---
+
+## Default Credentials
+
+| Username | Password | Role |
+|----------|----------|------|
+| `na9a` | `1234` | admin |
+
+Change via **Admin → Users** after first login.
 
 ---
 
 ## Architecture
 N9pinax is built using a modular architecture that separates the core components responsible for asset discovery, enrichment, analysis, and visualization. The main components include:
-- **Scanner**: Responsible for performing network scans using ARP, ICMP, TCP SYN, and UDP probes to discover devices on the local network.
-- **Backend**: Handles data enrichment, analysis, and alert generation. It processes the raw scan data, enriches it with additional information, and applies rule-based logic to identify potential security issues.
-- **frontend**: Provides the web dashboard for visualizing discovered assets and security alerts. It communicates with the backend via WebSockets to receive real-time updates and allows users to interact with the data.
-- **Docker**: The entire platform is containerized using Docker, making it easy to deploy and manage in various environments without worrying about dependencies or compatibility issues.
+ 
+- **Scanner** — Performs network scans using ARP, ICMP, TCP SYN, and UDP probes to discover devices on the local network. Requires root privileges for raw socket access.
+- **Backend** — FastAPI service handling data enrichment, alert generation, and SSE streaming. Processes raw scan data, enriches it with fingerprinting results, and applies rule-based SIEM logic to identify potential security issues.
+- **Frontend** — Static web dashboard built with Vanilla JS. Communicates with the backend via SSE for real-time updates. Provides device inventory, alert monitoring, scan controls, and export functionality.
+- **Docker** — The entire platform is containerized using Docker Compose, separating the scanner (privileged, host network) from the API (unprivileged) for proper security isolation.
 
 ![Architecture](assets/architecture.png)
 
 ```
 n9pinax/
-├── backend/                     # Backend FastAPI REST + SSE API 
+├── backend/                     # Backend FastAPI REST + SSE API
 │   ├── app.py                   # API routes, authentication, static UI serving
-│   ├── scan_service.py          # Scan orchestration + SSE events 
+│   ├── scan_service.py          # Scan orchestration + SSE events
 │   ├── events.py                # In-memory event bus for inter-component communication
-│   └── ...                      # serializers, schemas, rate limiting, Redis cache 
-├── scanner/                     # scanning engine and packet handling (requires root privileges)
+│   └── ...                      # serializers, schemas, rate limiting, Redis cache
+├── scanner/                     # Scanning engine and packet handling (requires root privileges)
 │   ├── core/                    # ARP / ICMP / SYN / UDP probes and packet handling
-│   ├── fingerprint/             # vendor / OS / device fingerprinting 
-│   ├── alerts.py                # SIEM rules and alert generation 
-│   ├── report.py                # report/export generation 
-│   ├── storage.py               # SQLite persistence 
-│   └── ...                      # models, utilities 
-├── Frontend 2/                  # static UI (note the two spaces) 
-│   ├── pages/                   # HTML pages (scan, devices, alerts, reports, admin, notes) 
-│   ├── js/                     # UI logic, API helpers, SSE handling 
-│   ├── css/                    # layout styles 
-│   └── styles/                 # theme and components styles
-├── Docker/                     # deployment
-│   ├── Dockerfile              # application image build
-│   ├── docker-compose.yml      # service orchestration (API, Redis)
-│   ├── .env                    # environment configuration template for Docker deployment
-│   └── ...                      # deployment scripts....
+│   ├── fingerprint/             # vendor / OS / device fingerprinting
+│   ├── alerts.py                # SIEM rules and alert generation
+│   ├── report.py                # report/export generation
+│   ├── storage.py               # SQLite persistence
+│   └── ...                      # models, utilities
+├── Frontend 2/                  # Static UI
+│   ├── pages/                   # HTML pages (scan, devices, alerts, reports, admin, notes)
+│   ├── js/                      # UI logic, API helpers, SSE handling
+│   ├── css/                     # layout styles
+│   └── styles/                  # theme and component styles
+├── Docker/                      # Deployment
+│   ├── Dockerfile               # Application image build
+│   ├── docker-compose.yml       # Service orchestration (API, Redis)
+│   ├── .env                     # Environment configuration template
+│   └── ...                      # deployment scripts
 ```
 
 ---
@@ -193,7 +252,7 @@ n9pinax/
 ---
 
 > [!WARNING]
-> THIS README IS STILL UNDERCONSTRUCTION 
+> THIS README IS STILL UNDER CONSTRUCTION 
 > ![Builder](https://github.com/Dna9a/Repo-s_assets/blob/main/B2R/lbenay.gif)
 
 
