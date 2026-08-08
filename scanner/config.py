@@ -107,9 +107,11 @@ class ScannerConfig:
     max_retries: int = field(default_factory=lambda: _env_int("SCANNER_MAX_RETRIES", 1))
 
     # API server ────────────────────────────────────────────────────────────
-    # Default to 0.0.0.0 so `python -m backend` (no Docker) is reachable from
-    # the LAN — matching the Docker/Makefile bind. Override with SCANNER_API_HOST.
-    api_host: str = os.environ.get("SCANNER_API_HOST", "0.0.0.0")
+    # Bind to loopback by default so a local run is NOT exposed to the whole
+    # LAN (the dashboard ships with default credentials). Set
+    # SCANNER_API_HOST=0.0.0.0 to deliberately expose it; the Docker image does
+    # exactly that, since the container is meant to serve the LAN.
+    api_host: str = os.environ.get("SCANNER_API_HOST", "127.0.0.1")
     api_port: int = field(default_factory=lambda: _env_int("SCANNER_API_PORT", 8000))
     api_rate_limit_per_minute: int = field(
         default_factory=lambda: _env_int("SCANNER_API_RATE_PER_MIN", 60)

@@ -210,13 +210,14 @@ run-list:
 	@$(PYTHON) -m $(SCANNER_PKG).main --list
 
 run-backend:
-	@echo "$(CYAN)🌐 Starting FastAPI + SSE backend (http://0.0.0.0:8000)...$(RESET)"
+	@echo "$(CYAN)🌐 Starting FastAPI + SSE backend (http://127.0.0.1:8000)...$(RESET)"
+	@echo "$(YELLOW)  Bound to localhost. To expose on the LAN: SCANNER_API_HOST=0.0.0.0 make run-backend$(RESET)"
 	@if command -v uvicorn > /dev/null 2>&1; then \
 		echo "$(CYAN)→ Running with uvicorn$(RESET)"; \
-		uvicorn backend.app:app --host 0.0.0.0 --port 8000; \
+		uvicorn backend.app:app --host $${SCANNER_API_HOST:-127.0.0.1} --port 8000; \
 	else \
 		echo "$(YELLOW)uvicorn not found, falling back to python -m backend$(RESET)"; \
-		SCANNER_API_HOST=0.0.0.0 $(PYTHON) -m backend; \
+		$(PYTHON) -m backend; \
 	fi
 
 # Run the backend as root so ARP/SYN scanning works without additional setup.
@@ -227,9 +228,9 @@ run-backend-sudo:
 	@echo "$(YELLOW)  Sudo required for raw-socket scanning (ARP/ICMP/SYN).$(RESET)"
 	@if [ -f .env ]; then export $$(cat .env | grep -v '^#' | xargs); fi; \
 	if command -v uvicorn > /dev/null 2>&1; then \
-		sudo -E $(PYTHON) -m uvicorn backend.app:app --host 0.0.0.0 --port 8000; \
+		sudo -E $(PYTHON) -m uvicorn backend.app:app --host $${SCANNER_API_HOST:-127.0.0.1} --port 8000; \
 	else \
-		sudo -E SCANNER_API_HOST=0.0.0.0 $(PYTHON) -m backend; \
+		sudo -E $(PYTHON) -m backend; \
 	fi
 
 # One-time setup: grant CAP_NET_RAW + CAP_NET_ADMIN to the Python binary so
@@ -245,9 +246,9 @@ setup-caps:
 
 # Development target: auto-reload on code changes (requires uvicorn)
 run-backend-reload:
-	@echo "$(CYAN)🌐 Starting FastAPI + SSE backend (dev, --reload, http://0.0.0.0:8000)...$(RESET)"
+	@echo "$(CYAN)🌐 Starting FastAPI + SSE backend (dev, --reload, http://127.0.0.1:8000)...$(RESET)"
 	@if command -v uvicorn > /dev/null 2>&1; then \
-		uvicorn backend.app:app --host 0.0.0.0 --port 8000 --reload; \
+		uvicorn backend.app:app --host $${SCANNER_API_HOST:-127.0.0.1} --port 8000 --reload; \
 	else \
 		echo "$(RED)Error: uvicorn is not installed. Run 'make install-web' first.$(RESET)"; exit 1; \
 	fi

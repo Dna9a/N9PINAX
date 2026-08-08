@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 import os
+import re
+import secrets
 import time
 import uuid
 import bcrypt
@@ -28,7 +30,7 @@ from fastapi.responses import (
 )
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 try:
     from sse_starlette.sse import EventSourceResponse
@@ -93,13 +95,83 @@ _ACTIVITY_LOG: list[dict] = []
 _bearer = HTTPBearer(auto_error=False)
 
 # ── Auth helpers ──────────────────────────────────────────────────────────
-_DEV_JWT_SECRET = "n9pinax-jwt-secret-change-in-prod"
-_JWT_SECRET = os.environ.get("SCANNER_JWT_SECRET") or _DEV_JWT_SECRET
-if _JWT_SECRET == _DEV_JWT_SECRET:
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+# Values that must NEVER be accepted as a real signing secret. The first three
+# are placeholders that have appeared in this repo's docs / example env files
+# and are therefore public knowledge — a token signed with any of them is
+# trivially forgeable by anyone who has seen the source.
+_PLACEHOLDER_SECRETS = frozenset(
+    {
+        "",
+        "n9pinax-jwt-secret-change-in-prod",
+        "replace-with-a-strong-random-secret",
+        "change-me-before-deploying",
+        "change-me",
+        "changeme",
+        "secret",
+        "changethis",
+    }
+)
+
+
+def _resolve_jwt_secret() -> str:
+    """Resolve the JWT signing secret, failing closed in production.
+
+    A secret is only accepted when it is explicitly set, not a known
+    placeholder, and at least 16 chars long. When no usable secret is present
+    we EITHER refuse to start (``SCANNER_ENV=production``) OR generate a random
+    ephemeral secret for this process (dev/local/test). Crucially, we never
+    fall back to a hardcoded constant, so tokens can never be forged from
+    values baked into the source tree.
+    """
+    raw = (os.environ.get("SCANNER_JWT_SECRET") or "").strip()
+    if raw and raw.lower() not in _PLACEHOLDER_SECRETS and len(raw) >= 16:
+        return raw
+
+    env = (os.environ.get("SCANNER_ENV") or "").strip().lower()
+    if env in ("prod", "production"):
+        raise RuntimeError(
+            "SCANNER_JWT_SECRET is unset, a known placeholder, or too short. "
+            "Refusing to start in production. Generate a strong secret with:\n"
+            '  python3 -c "import secrets; print(secrets.token_hex(32))"\n'
+            "and set it via the SCANNER_JWT_SECRET environment variable."
+        )
+
+    ephemeral = secrets.token_hex(32)
     logging.getLogger(__name__).warning(
-        "SCANNER_JWT_SECRET is not set — using insecure dev fallback. "
-        "Set this env var before deploying to production."
+        "SCANNER_JWT_SECRET is not set to a strong value — generated a RANDOM "
+        "ephemeral secret for this process. All tokens will be invalidated on "
+        "restart. Set SCANNER_JWT_SECRET for a stable secret; set "
+        "SCANNER_ENV=production to require one and fail closed."
     )
+    return ephemeral
+
+
+_JWT_SECRET = _resolve_jwt_secret()
+
+# ── SSE stream tickets ──────────────────────────────────────────────────────
+# EventSource cannot send an Authorization header, so the old code passed the
+# long-lived JWT in the URL query string — where it ended up in access logs,
+# proxy logs, and browser history. Instead we mint a short-lived, single-use
+# ticket (authenticated via the normal Bearer header) and the browser opens the
+# stream with ?ticket=. A leaked ticket is useless within seconds and grants
+# read-only stream access, not full account access.
+_SSE_TICKETS: dict[str, tuple[dict, float]] = {}
+_SSE_TICKET_TTL = 30.0  # seconds
+
+
+def _prune_sse_tickets(now: float) -> None:
+    expired = [t for t, (_, exp) in _SSE_TICKETS.items() if exp < now]
+    for t in expired:
+        _SSE_TICKETS.pop(t, None)
 
 
 def _make_token(user: dict) -> str:
@@ -199,10 +271,23 @@ class LoginResponse(BaseModel):
     role: str
 
 
+# Deliberately strict: forbids whitespace and the HTML metacharacters that
+# would otherwise let a crafted email become a stored-XSS payload downstream.
+_EMAIL_RE = re.compile(r"^[^@\s<>\"'&/\\]+@[^@\s<>\"'&/\\]+\.[^@\s<>\"'&/\\]{2,}$")
+
+
 class CreateUserRequest(BaseModel):
     email: str = Field(..., max_length=254)
-    password: str = Field(..., min_length=6, max_length=128)
+    password: str = Field(..., min_length=8, max_length=128)
     role: str = Field("analyst", pattern="^(analyst|admin)$")
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _EMAIL_RE.match(v):
+            raise ValueError("invalid email address")
+        return v
 
 
 # ── App factory ───────────────────────────────────────────────────────────
@@ -211,12 +296,28 @@ def create_app() -> FastAPI:
     cfg.ensure_dirs()
     init_db(cfg.db_path)
 
-    app = FastAPI(title="N9pinax — SIEM Scanner API", version=VERSION)
+    # API docs are an information-disclosure surface (they enumerate every
+    # route + schema). Off by default; opt in with SCANNER_ENABLE_DOCS=1.
+    _docs_enabled = _env_bool("SCANNER_ENABLE_DOCS", False)
+    app = FastAPI(
+        title="N9pinax — SIEM Scanner API",
+        version=VERSION,
+        docs_url="/docs" if _docs_enabled else None,
+        redoc_url="/redoc" if _docs_enabled else None,
+        openapi_url="/openapi.json" if _docs_enabled else None,
+    )
     app.router.add_event_handler("shutdown", close_redis)
+
+    # CORS: never combine a wildcard origin with credentials (the browser
+    # rejects it, and it signals an unsafe default). Auth here is via the
+    # Authorization header, not cookies, so credentials are unnecessary; we
+    # only enable them when an explicit origin allowlist is configured.
+    cors_origins = list(cfg.api_cors_origins) or ["*"]
+    allow_all_origins = "*" in cors_origins
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(cfg.api_cors_origins) or ["*"],
-        allow_credentials=True,
+        allow_origins=cors_origins,
+        allow_credentials=not allow_all_origins,
         allow_methods=["GET", "POST", "DELETE", "PATCH"],
         allow_headers=["Content-Type", "Authorization"],
     )
@@ -231,7 +332,11 @@ def create_app() -> FastAPI:
         )
 
     # Auth
-    @app.post("/api/auth/login", response_model=LoginResponse)
+    @app.post(
+        "/api/auth/login",
+        response_model=LoginResponse,
+        dependencies=[Depends(enforce_rate_limit)],
+    )
     async def login(payload: LoginRequest, request: Request):
         user = get_user_by_email(payload.email.lower().strip())
         if user is None or not bcrypt.checkpw(
@@ -263,6 +368,7 @@ def create_app() -> FastAPI:
                 enable_dhcp=payload.dhcp,
                 resolve_hostnames=payload.resolve_hostnames,
                 loop=loop,
+                owner=user.get("sub"),
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -648,24 +754,42 @@ def create_app() -> FastAPI:
     ):
         return _ACTIVITY_LOG[-limit:][::-1]
 
+    # Mint a short-lived SSE ticket. Authenticated with the normal Bearer
+    # header so the JWT never travels in a URL.
+    @app.post("/api/stream/ticket", dependencies=[Depends(enforce_rate_limit)])
+    async def stream_ticket(user: dict = Depends(_get_current_user)):
+        now = time.time()
+        _prune_sse_tickets(now)
+        ticket = secrets.token_urlsafe(32)
+        _SSE_TICKETS[ticket] = (user, now + _SSE_TICKET_TTL)
+        return {"ticket": ticket, "expires_in": int(_SSE_TICKET_TTL)}
+
     def _get_stream_user(
         request: Request,
-        token: Optional[str] = Query(None, max_length=2048),
+        ticket: Optional[str] = Query(None, max_length=128),
         credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
     ) -> dict:
-        """Auth for SSE — accepts Bearer header OR ?token= query param."""
-        raw = None
+        """Auth for SSE — accepts a Bearer header (API clients) OR a ?ticket=.
+
+        The long-lived JWT is deliberately NOT accepted as a query param.
+        """
         if credentials is not None:
-            raw = credentials.credentials
-        elif token:
-            raw = token
-        if not raw:
-            raise HTTPException(status_code=401, detail="Missing authorization")
-        return _decode_token(raw)
+            return _decode_token(credentials.credentials)
+        if ticket:
+            entry = _SSE_TICKETS.pop(ticket, None)  # single-use
+            if entry is not None and entry[1] >= time.time():
+                return entry[0]
+            raise HTTPException(
+                status_code=401, detail="Invalid or expired stream ticket"
+            )
+        raise HTTPException(status_code=401, detail="Missing authorization")
 
     # SSE stream
     @app.get("/api/stream", dependencies=[Depends(enforce_rate_limit)])
     async def stream(request: Request, user: dict = Depends(_get_stream_user)):
+        uid = user.get("sub")
+        is_admin = user.get("role") == "admin"
+
         async def event_generator():
             yield {
                 "event": "hello",
@@ -674,6 +798,16 @@ def create_app() -> FastAPI:
             async for evt in BUS.subscribe():
                 if await request.is_disconnected():
                     break
+                # Object-level authorization: job-scoped events (scan logs,
+                # progress, live device feed, completion) are only delivered to
+                # the user who started that scan, or to an admin. Events with no
+                # job_id (e.g. SIEM alerts) are network-wide and go to everyone.
+                data = evt.data if isinstance(evt.data, dict) else {}
+                job_id = data.get("job_id")
+                if job_id and not is_admin:
+                    owner = SERVICE.job_owner(job_id)
+                    if owner != uid:
+                        continue
                 yield evt.to_sse()
 
         return EventSourceResponse(event_generator(), ping=15)

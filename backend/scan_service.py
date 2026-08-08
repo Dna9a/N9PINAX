@@ -40,6 +40,7 @@ class ScanJob:
     scan_id: Optional[str] = None
     error: Optional[str] = None
     progress: dict[str, str] = field(default_factory=dict)
+    owner: Optional[str] = None  # user_id that started the scan (for SSE scoping)
 
     def to_json(self) -> dict:
         return {
@@ -76,6 +77,12 @@ class ScanService:
         with self._lock:
             return self._jobs.get(job_id)
 
+    def job_owner(self, job_id: str) -> Optional[str]:
+        """Return the user_id that started ``job_id`` (or None if unknown)."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            return job.owner if job else None
+
     def submit(
         self,
         network: Optional[str] = None,
@@ -84,6 +91,7 @@ class ScanService:
         enable_dhcp: bool = False,
         resolve_hostnames: bool = True,
         loop: Optional[asyncio.AbstractEventLoop] = None,
+        owner: Optional[str] = None,
     ) -> ScanJob:
         # Validate network up-front — refuse junk before spawning a thread.
         if network:
@@ -92,7 +100,7 @@ class ScanService:
             except ValueError as e:
                 raise ValueError(f"Invalid CIDR: {network!r} ({e})")
 
-        job = ScanJob(job_id=uuid.uuid4().hex, network=network or "auto")
+        job = ScanJob(job_id=uuid.uuid4().hex, network=network or "auto", owner=owner)
         with self._lock:
             self._jobs[job.job_id] = job
 

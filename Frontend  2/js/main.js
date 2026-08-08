@@ -258,13 +258,16 @@ const SSE_EVENT_TYPES = [
   'alert', 'alert_resolved'
 ];
 
+// Opens an authenticated SSE stream. Because EventSource cannot set an
+// Authorization header, we first POST for a short-lived, single-use ticket
+// (sending the JWT in the header, never the URL), then open the stream with
+// ?ticket=. Tickets are single-use and expire in seconds, so we transparently
+// re-mint on reconnect. Returns a handle with .close().
 function connectSSE(onEvent, opts = {}) {
-  const token = localStorage.getItem('authToken');
   const base = getApiBase();
-  const es = new EventSource(`${base}/api/stream?token=${encodeURIComponent(token || '')}`);
-
-  es.addEventListener('open', () => opts.onStatus && opts.onStatus(true));
-  es.onerror = () => { if (opts.onStatus) opts.onStatus(false); };
+  let es = null;
+  let closed = false;
+  let backoff = 1000;
 
   const makeHandler = (type) => (e) => {
     let payload = null;
@@ -278,9 +281,55 @@ function connectSSE(onEvent, opts = {}) {
     catch (err) { console.error(`SSE handler error (${type})`, err); }
   };
 
-  SSE_EVENT_TYPES.forEach(t => es.addEventListener(t, makeHandler(t)));
-  es.onmessage = makeHandler('message');
-  return es;
+  async function mintTicket() {
+    const token = localStorage.getItem('authToken');
+    const resp = await fetch(`${base}/api/stream/ticket`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token || ''}` }
+    });
+    if (!resp.ok) throw new Error(`ticket HTTP ${resp.status}`);
+    return (await resp.json()).ticket;
+  }
+
+  function scheduleReconnect() {
+    if (closed) return;
+    setTimeout(open, backoff);
+    backoff = Math.min(backoff * 2, 15000);
+  }
+
+  async function open() {
+    if (closed) return;
+    let ticket;
+    try {
+      ticket = await mintTicket();
+    } catch (err) {
+      if (opts.onStatus) opts.onStatus(false);
+      scheduleReconnect();
+      return;
+    }
+    es = new EventSource(`${base}/api/stream?ticket=${encodeURIComponent(ticket)}`);
+    es.addEventListener('open', () => {
+      backoff = 1000;
+      if (opts.onStatus) opts.onStatus(true);
+    });
+    es.onerror = () => {
+      if (opts.onStatus) opts.onStatus(false);
+      // The single-use ticket is already spent; tear down and reconnect with a
+      // fresh one instead of letting EventSource retry the dead URL forever.
+      try { es.close(); } catch (_) { /* noop */ }
+      scheduleReconnect();
+    };
+    SSE_EVENT_TYPES.forEach(t => es.addEventListener(t, makeHandler(t)));
+    es.onmessage = makeHandler('message');
+  }
+
+  open();
+  return {
+    close() {
+      closed = true;
+      if (es) { try { es.close(); } catch (_) { /* noop */ } }
+    }
+  };
 }
 
 // ── Authenticated file download (PDF / CSV) ──────────────────────────────
@@ -385,14 +434,22 @@ async function copyToClipboard(text) {
   }
 }
 
-// Confirmation dialog
+// Confirmation dialog.
+// SECURITY: `message` is escaped before being injected — callers routinely
+// build it from user-controlled data (e.g. a user's email), so raw
+// interpolation here was a stored-XSS sink. The modal is also fully removed
+// from the DOM on every exit path (confirm / cancel / overlay) so repeated
+// use never leaves orphaned duplicate #confirmModal nodes behind.
 function confirm(message, onConfirm, onCancel) {
+  // Drop any stale modal so ids stay unique.
+  document.getElementById('confirmModal')?.remove();
+
   const modalHtml = `
     <div class="modal-overlay active" id="confirmModal">
       <div class="modal">
         <div class="modal-header">
           <h3 class="modal-title">Confirm Action</h3>
-          <button class="btn btn-icon btn-ghost" onclick="closeModal('confirmModal')">
+          <button class="btn btn-icon btn-ghost" data-confirm-cancel>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -400,21 +457,27 @@ function confirm(message, onConfirm, onCancel) {
           </button>
         </div>
         <div class="modal-body">
-          <p>${message}</p>
+          <p>${escapeHtml(message)}</p>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="closeModal('confirmModal')">Cancel</button>
+          <button class="btn btn-secondary" data-confirm-cancel>Cancel</button>
           <button class="btn btn-danger" id="confirmBtn">Confirm</button>
         </div>
       </div>
     </div>
   `;
-  
+
   document.body.insertAdjacentHTML('beforeend', modalHtml);
-  
+  const modal = document.getElementById('confirmModal');
+  const cleanup = () => modal.remove();
+
+  modal.querySelectorAll('[data-confirm-cancel]').forEach(btn =>
+    btn.addEventListener('click', () => { cleanup(); onCancel?.(); }));
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) { cleanup(); onCancel?.(); }
+  });
   document.getElementById('confirmBtn').addEventListener('click', () => {
-    closeModal('confirmModal');
-    document.getElementById('confirmModal').remove();
+    cleanup();
     onConfirm?.();
   });
 }

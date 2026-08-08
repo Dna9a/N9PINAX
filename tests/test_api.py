@@ -81,19 +81,19 @@ def test_admin_create_user_non_admin_403(client, auth_headers):
     r = client.post(
         "/api/admin/users",
         headers=auth_headers,
-        json={"email": email, "password": "secret1", "role": "analyst"},
+        json={"email": email, "password": "secret12", "role": "analyst"},
     )
     assert r.status_code == 200, r.text
 
     tok = client.post(
-        "/api/auth/login", json={"email": email, "password": "secret1"}
+        "/api/auth/login", json={"email": email, "password": "secret12"}
     ).json()["token"]
     analyst_headers = {"Authorization": f"Bearer {tok}"}
 
     r2 = client.post(
         "/api/admin/users",
         headers=analyst_headers,
-        json={"email": "x@y.com", "password": "secret1", "role": "analyst"},
+        json={"email": "x@y.com", "password": "secret12", "role": "analyst"},
     )
     assert r2.status_code == 403
 
