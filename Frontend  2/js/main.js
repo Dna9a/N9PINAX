@@ -16,6 +16,9 @@ function toggleTheme() {
 }
 
 function updateThemeIcon(theme) {
+  // Keep the toggle's pressed state in sync for screen readers (F-105).
+  const toggleBtn = document.getElementById('themeToggle');
+  if (toggleBtn) toggleBtn.setAttribute('aria-pressed', theme === 'light' ? 'true' : 'false');
   const sunIcon = document.querySelector('.icon-sun');
   const moonIcon = document.querySelector('.icon-moon');
   if (sunIcon && moonIcon) {
@@ -79,26 +82,42 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
   });
 });
 
-// Tab handling
+// Tab handling — WAI-ARIA tablist pattern with keyboard support (F-106):
+// click OR Enter/Space activates; Arrow/Home/End move focus between tabs.
 function initTabs() {
   document.querySelectorAll('.tabs').forEach(tabContainer => {
-    const tabs = tabContainer.querySelectorAll('.tab');
-    
-    tabs.forEach(tab => {
-      tab.addEventListener('click', function() {
-        // Remove active from all tabs
-        tabs.forEach(t => t.classList.remove('active'));
-        // Add active to clicked tab
-        this.classList.add('active');
-        
-        // Handle tab content
-        const tabId = this.getAttribute('data-tab');
-        if (tabId) {
-          document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.add('hidden');
-          });
-          document.getElementById(tabId)?.classList.remove('hidden');
+    const tabs = Array.from(tabContainer.querySelectorAll('.tab'));
+
+    function activate(tab, focus) {
+      tabs.forEach(t => {
+        const on = t === tab;
+        t.classList.toggle('active', on);
+        if (t.hasAttribute('role')) {   // ARIA-managed tabs (e.g. admin)
+          t.setAttribute('aria-selected', String(on));
+          t.setAttribute('tabindex', on ? '0' : '-1');
         }
+      });
+      const tabId = tab.getAttribute('data-tab');
+      if (tabId) {
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+        document.getElementById(tabId)?.classList.remove('hidden');
+      }
+      if (focus) tab.focus();
+    }
+
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => activate(tab));
+      tab.addEventListener('keydown', (e) => {
+        let target = null;
+        switch (e.key) {
+          case 'ArrowRight': case 'ArrowDown': target = tabs[(i + 1) % tabs.length]; break;
+          case 'ArrowLeft':  case 'ArrowUp':   target = tabs[(i - 1 + tabs.length) % tabs.length]; break;
+          case 'Home': target = tabs[0]; break;
+          case 'End':  target = tabs[tabs.length - 1]; break;
+          case 'Enter': case ' ': case 'Spacebar': e.preventDefault(); activate(tab); return;
+          default: return;
+        }
+        if (target) { e.preventDefault(); activate(target, true); }
       });
     });
   });
@@ -382,10 +401,9 @@ function initSearch() {
   searchInput.addEventListener('input', function(e) {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      const query = e.target.value.trim();
-      if (query.length > 2) {
-        performSearch(query);
-      }
+      // Dispatch on every change (incl. empty) so listeners can filter AND
+      // reset when the box is cleared (F-090).
+      performSearch(e.target.value.trim());
     }, 300);
   });
 }

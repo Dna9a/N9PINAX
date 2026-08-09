@@ -4,12 +4,20 @@
 
   let vendorChart = null;
   let portChart = null;
+  let lastDevices = [];   // most recent scan's devices, for the top search box
 
   document.addEventListener('DOMContentLoaded', () => {
     mountSidebar('dashboard');
     loadDashboard();
     startSSE();
     document.getElementById('quickScanBtn').addEventListener('click', quickScan);
+    // Wire the top search box (F-090): filter the recent-devices table live.
+    document.addEventListener('globalsearch', (e) => {
+      const q = (e.detail || '').toLowerCase();
+      const filtered = !q ? lastDevices : lastDevices.filter(d =>
+        [d.ip, d.hostname, d.vendor, d.mac].some(v => (v || '').toLowerCase().includes(q)));
+      renderRecentDevices(filtered);
+    });
   });
 
   function setText(id, value) {
@@ -30,11 +38,14 @@
   async function loadDashboard() {
     // Unresolved alerts (also drives the sidebar badge).
     try {
-      const alerts = await api('/alerts?only_unresolved=true&limit=5');
-      setText('statAlerts', Array.isArray(alerts) ? alerts.length : 0);
-      renderRecentAlerts(alerts || []);
+      // Fetch the full unresolved set so the stat tile matches the sidebar
+      // badge (QA-011); only the newest few are rendered in the feed.
+      const alerts = await api('/alerts?only_unresolved=true&limit=500');
+      const list = Array.isArray(alerts) ? alerts : [];
+      setText('statAlerts', list.length);
+      renderRecentAlerts(list.slice(0, 5));
     } catch (e) {
-      setText('statAlerts', '0');
+      setText('statAlerts', '—');
       renderRecentAlerts([]);
     }
 
@@ -43,11 +54,23 @@
     try {
       scan = await api('/scans/last');
     } catch (e) {
-      // 404 when no scans yet — show empty state.
-      emptyState();
+      // Distinguish "no data yet" (404) from a real failure (F-097).
+      if ((e.message || '').toLowerCase().includes('no scans')) {
+        emptyState();
+      } else {
+        errorState(e.message);
+      }
       return;
     }
     renderScan(scan);
+  }
+
+  function errorState(msg) {
+    ['statTotalDevices', 'statOnline', 'statOpenPorts', 'statHighRisk',
+     'riskLow', 'riskMedium', 'riskHigh'].forEach(id => setText(id, '—'));
+    setText('statLastScan', 'error');
+    document.getElementById('recentDevices').innerHTML =
+      `<tr><td colspan="4" class="text-center text-muted py-4">Could not load dashboard data: ${escapeHtml(msg || 'unknown error')}</td></tr>`;
   }
 
   function emptyState() {
@@ -77,6 +100,7 @@
     setText('riskMedium', risk.medium);
     setText('riskHigh', risk.high);
 
+    lastDevices = devices;
     renderRecentDevices(devices);
     renderCharts(devices);
   }
@@ -183,6 +207,10 @@
   }
 
   async function pollJob(jobId, btn) {
+    // Cap polling so a hung/never-completing job can't poll forever (F-096):
+    // 150 × 2s ≈ 5 minutes, then give up and re-enable the button.
+    const MAX_ATTEMPTS = 150;
+    let attempts = 0;
     const tick = async () => {
       try {
         const job = await api(`/jobs/${jobId}`);
@@ -194,6 +222,11 @@
         }
         if (job.status === 'failed') {
           showNotification('Scan failed: ' + (job.error || 'unknown'), 'danger');
+          btn.disabled = false;
+          return;
+        }
+        if (++attempts >= MAX_ATTEMPTS) {
+          showNotification('Scan is taking longer than expected — check the Scan page.', 'warning');
           btn.disabled = false;
           return;
         }

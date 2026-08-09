@@ -72,7 +72,8 @@
 
   --text-primary:   #14120c;
   --text-secondary: #5c5040;
-  --text-muted:     #8c7c64;
+  /* Darkened for WCAG AA: >=4.5:1 on the cream --bg-primary (was #8c7c64 = 3.73:1) */
+  --text-muted:     #6b5e46;
 
   /* Darkened gold — legible on cream backgrounds */
   --accent-primary:   #a86a00;
@@ -187,10 +188,12 @@ h4 { font-size: 1.125rem; }
 }
 
 .btn-danger {
-  background-color: var(--danger);
-  color: white;
+  /* Fixed darker red so white label text clears WCAG AA 4.5:1 in both themes
+     (plain var(--danger) #ef4444 with white was only 3.76:1). */
+  background-color: #c81e1e;
+  color: #ffffff;
 }
-.btn-danger:hover:not(:disabled) { background-color: #dc2626; }
+.btn-danger:hover:not(:disabled) { background-color: #a81818; }
 
 .btn-outline {
   background-color: transparent;
@@ -897,4 +900,23 @@ h4 { font-size: 1.125rem; }
   .search-box { display: none; }
   .page-content { padding: 1rem; }
   .stats-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Horizontal-overflow guard (QA-023) ──────────────────────────────
+   Wide tables must scroll INSIDE their .table-container, never push the
+   whole page sideways. flex/grid children need min-width:0 so they may
+   shrink below their content width instead of forcing the page wider. */
+html, body { overflow-x: hidden; max-width: 100%; }
+.main-content, .page-content, .topbar, .card { min-width: 0; }
+.table-container { max-width: 100%; }
+
+/* ── Reduced motion (F-112) ──────────────────────────────────────────
+   Respect users who ask the OS to minimise animation. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

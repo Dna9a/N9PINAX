@@ -30,12 +30,18 @@
     });
   });
 
+  // Strip ANSI colour escape codes the CLI emits (QA-022) so the live log
+  // shows clean text instead of raw "\x1b[44m…" sequences.
+  function stripAnsi(s) {
+    return String(s == null ? '' : s).replace(/\x1b\[[0-9;]*m/g, '');
+  }
+
   function logLine(message, type) {
     const log = document.getElementById('scanLog');
     const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
     const div = document.createElement('div');
     div.className = 'console-line';
-    div.innerHTML = `<span class="console-time">[${time}]</span><span class="console-message ${type || ''}">${escapeHtml(message)}</span>`;
+    div.innerHTML = `<span class="console-time">[${time}]</span><span class="console-message ${type || ''}">${escapeHtml(stripAnsi(message))}</span>`;
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
   }
@@ -137,6 +143,10 @@
 
   function startSSE() {
     connectSSE((type, payload) => {
+      // Only react to events for the scan THIS page started. A job-scoped event
+      // for any other job (e.g. another operator's scan) must not drive this
+      // page's progress/status — that left it stuck on "Scanning…" (QA-021).
+      if (payload && payload.job_id && payload.job_id !== activeJobId) return;
       switch (type) {
         case 'scan_log':
           if (payload && payload.line) logLine(payload.line);

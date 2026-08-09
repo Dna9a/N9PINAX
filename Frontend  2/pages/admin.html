@@ -16,14 +16,14 @@
     <main class="main-content">
       <header class="topbar">
         <div class="topbar-left">
-          <button class="btn btn-icon btn-ghost" onclick="toggleSidebar()">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+          <button type="button" aria-label="Toggle sidebar navigation" class="btn btn-icon btn-ghost" onclick="toggleSidebar()">
+            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </button>
         </div>
         <div class="topbar-right">
-          <button class="btn btn-icon btn-ghost" id="themeToggle">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sun"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-moon hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          <button type="button" aria-label="Toggle light/dark theme" aria-pressed="false" class="btn btn-icon btn-ghost" id="themeToggle">
+            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sun"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-moon hidden"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
           </button>
         </div>
       </header>
@@ -36,14 +36,14 @@
           </div>
         </div>
 
-        <div class="tabs">
-          <div class="tab active" data-tab="users">Users</div>
-          <div class="tab" data-tab="activity">Activity Log</div>
-          <div class="tab" data-tab="network">Network Binding</div>
+        <div class="tabs" role="tablist" aria-label="Admin sections">
+          <div class="tab active" data-tab="users" role="tab" id="tab-users" aria-controls="users" aria-selected="true" tabindex="0">Users</div>
+          <div class="tab" data-tab="activity" role="tab" id="tab-activity" aria-controls="activity" aria-selected="false" tabindex="-1">Activity Log</div>
+          <div class="tab" data-tab="network" role="tab" id="tab-network" aria-controls="network" aria-selected="false" tabindex="-1">Network Binding</div>
         </div>
 
         <!-- Users -->
-        <div class="tab-content" id="users">
+        <div class="tab-content" id="users" role="tabpanel" aria-labelledby="tab-users">
           <div class="card mb-6">
             <div class="card-header"><h3 class="card-title">Create User</h3></div>
             <div class="card-body">
@@ -83,7 +83,7 @@
         </div>
 
         <!-- Activity -->
-        <div class="tab-content hidden" id="activity">
+        <div class="tab-content hidden" id="activity" role="tabpanel" aria-labelledby="tab-activity">
           <div class="card">
             <div class="card-header flex items-center justify-between">
               <h3>Activity Log</h3>
@@ -101,7 +101,7 @@
         </div>
 
         <!-- Network Binding -->
-        <div class="tab-content hidden" id="network">
+        <div class="tab-content hidden" id="network" role="tabpanel" aria-labelledby="tab-network">
           <div class="card" id="networkBindingCard">
             <div class="card-header">
               <h3 class="card-title">Network Binding</h3>

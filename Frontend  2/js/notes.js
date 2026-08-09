@@ -21,8 +21,10 @@
       document.getElementById(id).addEventListener('input', onEdit));
     document.getElementById('noteScan').addEventListener('change', onEdit);
     document.getElementById('tagInput').addEventListener('input', renderChips);
-    // Flush a pending save if the user leaves.
-    window.addEventListener('beforeunload', () => { if (dirty) saveNow(); });
+    // Flush a pending save if the user leaves. An async api() call in
+    // beforeunload is not reliably awaited by browsers (F-099); a keepalive
+    // fetch on pagehide is delivered even as the page is torn down.
+    window.addEventListener('pagehide', flushOnExit);
   });
 
   function setStatus(text) {
@@ -122,15 +124,36 @@
     saveTimer = setTimeout(saveNow, AUTOSAVE_MS);
   }
 
-  async function saveNow() {
-    if (!current || !dirty) return;
-    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-    const payload = {
+  function buildPayload() {
+    return {
       title: document.getElementById('noteTitle').value,
       content: document.getElementById('noteContent').value,
       tags: parseTags(),
       scan_id: document.getElementById('noteScan').value || null
     };
+  }
+
+  // Best-effort save during page unload. `keepalive` lets the request outlive
+  // the page (unlike a normal fetch), and — unlike navigator.sendBeacon — it
+  // can still send the Authorization header the API requires.
+  function flushOnExit() {
+    if (!current || !dirty) return;
+    const token = localStorage.getItem('authToken');
+    try {
+      fetch(`${getApiBase()}/api/notes/${current.note_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(buildPayload()),
+        keepalive: true
+      });
+      dirty = false;
+    } catch (_) { /* nothing more we can do as the page closes */ }
+  }
+
+  async function saveNow() {
+    if (!current || !dirty) return;
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    const payload = buildPayload();
     setStatus('Saving…');
     try {
       const updated = await api(`/notes/${current.note_id}`, { method: 'PATCH', body: JSON.stringify(payload) });

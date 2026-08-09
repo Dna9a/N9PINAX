@@ -139,8 +139,8 @@ uninstall:
 		$(_COMPOSE) down --volumes --remove-orphans 2>/dev/null || true; \
 		echo "$(RED)Removing Docker images...$(RESET)"; \
 		docker rmi na9a-scanner:latest 2>/dev/null || true; \
-		echo "$(RED)Removing project directory...$(RESET)"; \
-		rm -rf "$(shell pwd)"; \
+# 		echo "$(RED)Removing project directory...$(RESET)"; \
+# 		rm -rf "$(shell pwd)"; \
 		echo "$(GREEN)✓ N9pinax removed.$(RESET)"; \
 	else \
 		echo "$(YELLOW)Cancelled.$(RESET)"; \

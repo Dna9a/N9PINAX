@@ -56,7 +56,8 @@
     }));
     body.querySelectorAll('[data-csv]').forEach(b => b.addEventListener('click', () => {
       const id = b.getAttribute('data-csv');
-      downloadFile(`/api/scans/${id}/csv`, `scan_${id.slice(0, 8)}.csv`);
+      // Use the canonical /export/ path, consistent with the JSON export (F-103).
+      downloadFile(`/api/scan/${id}/export/csv`, `scan_${id.slice(0, 8)}.csv`);
     }));
     body.querySelectorAll('[data-pdf]').forEach(b => b.addEventListener('click', () => {
       const id = b.getAttribute('data-pdf');

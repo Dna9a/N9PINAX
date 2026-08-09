@@ -23,7 +23,10 @@
       allDevices = scan.devices || [];
     } catch (e) {
       allDevices = [];
-      body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No scans yet — click Rescan to discover devices.</td></tr>';
+      const noData = (e.message || '').toLowerCase().includes('no scans');
+      body.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-4">${
+        noData ? 'No scans yet — click Rescan to discover devices.'
+               : 'Could not load devices: ' + escapeHtml(e.message || 'unknown error')}</td></tr>`;
       setStats();
       return;
     }
@@ -67,7 +70,7 @@
           }</tbody></table></div>`
         : '<div class="text-muted text-sm">No open ports.</div>';
       return `
-        <tr class="device-row" data-idx="${i}" style="cursor:pointer">
+        <tr class="device-row" data-idx="${i}" style="cursor:pointer" role="button" tabindex="0" aria-expanded="false" aria-label="Toggle port details for ${escapeHtml(d.ip)}">
           <td class="text-mono">${escapeHtml(d.ip)}</td>
           <td class="text-mono text-xs">${escapeHtml(d.mac)}</td>
           <td>${escapeHtml(d.vendor || 'Unknown')}</td>
@@ -80,11 +83,21 @@
         <tr class="device-detail hidden" data-detail="${i}"><td colspan="8">${portDetail}</td></tr>`;
     }).join('');
 
+    const toggleRow = (row) => {
+      const idx = row.getAttribute('data-idx');
+      const detail = body.querySelector(`[data-detail="${idx}"]`);
+      if (!detail) return;
+      const nowOpen = detail.classList.toggle('hidden') === false;
+      row.setAttribute('aria-expanded', String(nowOpen));
+    };
     body.querySelectorAll('.device-row').forEach(row => {
-      row.addEventListener('click', () => {
-        const idx = row.getAttribute('data-idx');
-        const detail = body.querySelector(`[data-detail="${idx}"]`);
-        if (detail) detail.classList.toggle('hidden');
+      row.addEventListener('click', () => toggleRow(row));
+      // Keyboard support (F-098): Enter / Space activate like a button.
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          toggleRow(row);
+        }
       });
     });
   }

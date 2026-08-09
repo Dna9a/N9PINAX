@@ -121,29 +121,43 @@
     }
   }
 
-  function saveNetworkBinding() {
+  async function saveNetworkBinding() {
     const input = document.getElementById('platformIp').value.trim();
     if (!input) { clearNetworkBinding(); return; }
 
-    const ipRegex = /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/;
-    if (!ipRegex.test(input)) {
-      showNotification('Enter a valid IP address (e.g. 192.168.1.50)', 'danger');
+    // Validate IPv4 octet ranges + optional port (F-101): the old regex let
+    // "999.999.999.999" through.
+    const m = input.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?::(\d{1,5}))?$/);
+    const octetsOk = m && m.slice(1, 5).every(o => Number(o) >= 0 && Number(o) <= 255);
+    const portOk = !m || m[5] === undefined || (Number(m[5]) >= 1 && Number(m[5]) <= 65535);
+    if (!octetsOk || !portOk) {
+      showNotification('Enter a valid IPv4 address (e.g. 192.168.1.50 or 192.168.1.50:8000)', 'danger');
       return;
     }
+
     const port = input.includes(':') ? '' : ':8000';
     const baseUrl = `http://${input}${port}`;
-    localStorage.setItem('apiBaseUrl', baseUrl);
-    showNotification(`Platform IP set to ${baseUrl} — reconnecting…`, 'success');
-    loadCurrentBinding();
 
-    setTimeout(async () => {
-      try {
-        await fetch(`${baseUrl}/api/health`);
-        showNotification('Connection to new IP confirmed ✓', 'success');
-      } catch (_) {
-        showNotification('Warning: could not reach the platform at that IP. Check the address.', 'warning');
-      }
-    }, 500);
+    // Confirm the target is reachable BEFORE persisting (F-102) — otherwise a
+    // typo would point every future request at a dead host and lock the UI out.
+    showNotification('Checking connectivity…', 'info');
+    const btn = document.getElementById('saveBindingBtn');
+    if (btn) btn.disabled = true;
+    try {
+      const opts = {};
+      if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) opts.signal = AbortSignal.timeout(4000);
+      const resp = await fetch(`${baseUrl}/api/health`, opts);
+      if (!resp.ok) throw new Error('bad status');
+    } catch (_) {
+      showNotification('Could not reach the platform at that address — binding not saved.', 'danger');
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    localStorage.setItem('apiBaseUrl', baseUrl);
+    showNotification(`Platform IP set to ${baseUrl} ✓`, 'success');
+    loadCurrentBinding();
+    if (btn) btn.disabled = false;
   }
 
   function clearNetworkBinding() {

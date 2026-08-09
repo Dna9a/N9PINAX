@@ -41,11 +41,13 @@ function mountSidebar(activeKey) {
     if (!items.length) continue;
     nav += `<div class="nav-section"><div class="nav-section-title">${section.title}</div>`;
     for (const it of items) {
-      const active = it.key === activeKey ? ' active' : '';
+      const isActive = it.key === activeKey;
+      const active = isActive ? ' active' : '';
+      const current = isActive ? ' aria-current="page"' : '';
       const badge = it.badge
         ? '<span class="badge badge-danger ml-auto nav-alert-badge" style="display:none">0</span>'
         : '';
-      nav += `<a href="${it.href}" class="nav-item${active}">${NAV_ICONS[it.icon]}<span>${it.label}</span>${badge}</a>`;
+      nav += `<a href="${it.href}" class="nav-item${active}"${current}>${NAV_ICONS[it.icon]}<span>${it.label}</span>${badge}</a>`;
     }
     nav += '</div>';
   }
