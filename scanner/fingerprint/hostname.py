@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import socket
 import threading
 import time
@@ -29,6 +30,10 @@ _log = logging.getLogger(__name__)
 
 _CACHE_FILE = Path(__file__).parent.parent / "data" / "hostname_cache.json"
 _CACHE_TTL_SECONDS = 60 * 60 * 24  # 24h — DNS PTR records change rarely on a LAN
+# Failed ("unknown") lookups get a MUCH shorter TTL: a host that had no PTR
+# record (or was briefly unreachable) shouldn't be written off for a full day
+# (audit F-047). Re-resolve these every few minutes instead.
+_NEG_CACHE_TTL_SECONDS = 5 * 60  # 5 min
 _UNKNOWN = "unknown"
 
 
@@ -65,12 +70,18 @@ def _load_cache() -> None:
 
 
 def _flush_cache() -> None:
-    """Persist the in-memory cache to disk; safe to call frequently."""
+    """Persist the in-memory cache to disk atomically; safe to call often.
+
+    Writes to a temp file and ``os.replace``s it into place so a crash
+    mid-write can never leave a truncated/corrupt cache file (audit F-046).
+    """
     try:
         _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
         with _cache_lock:
             snapshot = {ip: [name, ts] for ip, (name, ts) in _cache.items()}
-        _CACHE_FILE.write_text(json.dumps(snapshot), encoding="utf-8")
+        tmp = _CACHE_FILE.with_name(_CACHE_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(snapshot), encoding="utf-8")
+        os.replace(tmp, _CACHE_FILE)
     except OSError as e:
         _log.debug("hostname cache flush failed: %s", e)
 
@@ -131,8 +142,14 @@ def resolve_hostname(ip: str, timeout: float | None = None) -> str:
     now = time.time()
     with _cache_lock:
         cached = _cache.get(ip)
-        if cached and now - cached[1] < _CACHE_TTL_SECONDS:
-            return cached[0]
+        if cached:
+            # Successful lookups are trusted for 24h; failed ("unknown") ones
+            # only for a few minutes so a transient miss self-heals (F-047).
+            ttl = (
+                _NEG_CACHE_TTL_SECONDS if cached[0] == _UNKNOWN else _CACHE_TTL_SECONDS
+            )
+            if now - cached[1] < ttl:
+                return cached[0]
 
     name = _lookup_with_timeout(ip, timeout) or _UNKNOWN
 

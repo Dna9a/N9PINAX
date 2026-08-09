@@ -307,20 +307,24 @@ def _ttl_sanity_check(fp: FingerprintResult) -> FingerprintResult:
     we shouldn't let a weak MAC rule override it.
     """
     ttl = fp.tcp_ttl
-    if ttl is None:
+    if ttl is None or ttl <= 0:
         return fp
 
+    # Windows initial TTL is 128, Linux/macOS 64, network gear 255. TTL only
+    # decreases with hops, so widen the bands below the initial value to keep
+    # correcting gross mismatches even for hosts several hops away (audit
+    # F-055) instead of only directly-attached ones.
     family = fp.os_family
-    if 56 <= ttl <= 64 and family in (OSFamily.WINDOWS,):
+    if 40 <= ttl <= 64 and family in (OSFamily.WINDOWS,):
         # Strong contradiction — Linux/macOS, not Windows.
         fp.os_family = OSFamily.LINUX
         fp.sources["ttl_correction"] = f"TTL={ttl} overrides Windows guess"
         fp.update_confidence(-0.10)
-    elif 120 <= ttl <= 128 and family in (OSFamily.LINUX, OSFamily.MACOS, OSFamily.IOS):
+    elif 100 <= ttl <= 128 and family in (OSFamily.LINUX, OSFamily.MACOS, OSFamily.IOS):
         fp.os_family = OSFamily.WINDOWS
         fp.sources["ttl_correction"] = f"TTL={ttl} overrides {family.value} guess"
         fp.update_confidence(-0.10)
-    elif ttl >= 250 and family in (OSFamily.LINUX, OSFamily.WINDOWS):
+    elif ttl >= 200 and family in (OSFamily.LINUX, OSFamily.WINDOWS):
         fp.os_family = OSFamily.NETWORK_DEVICE
         fp.device_type = DeviceType.ROUTER
         fp.sources["ttl_correction"] = f"TTL={ttl} suggests router"

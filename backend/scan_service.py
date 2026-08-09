@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+from scanner.config import get_config
 from scanner.models import ScanResult
 
 from .events import BUS
@@ -96,9 +97,18 @@ class ScanService:
         # Validate network up-front — refuse junk before spawning a thread.
         if network:
             try:
-                ipaddress.ip_network(network, strict=False)
+                net = ipaddress.ip_network(network, strict=False)
             except ValueError as e:
                 raise ValueError(f"Invalid CIDR: {network!r} ({e})")
+            # Reject oversized ranges up front so the API returns a clean 400
+            # instead of accepting a /8 that would hang the single scan slot
+            # (audit QA-017).
+            max_hosts = get_config().max_scan_hosts
+            if max_hosts and max_hosts > 0 and net.num_addresses > max_hosts:
+                raise ValueError(
+                    f"CIDR too large: {net.num_addresses} addresses exceeds the "
+                    f"{max_hosts}-host limit (SCANNER_MAX_SCAN_HOSTS)."
+                )
 
         job = ScanJob(job_id=uuid.uuid4().hex, network=network or "auto", owner=owner)
         with self._lock:

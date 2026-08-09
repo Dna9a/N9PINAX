@@ -58,6 +58,9 @@ VALID_IPS = [
     "10.0.0.1",
     "172.16.0.1",
     "255.255.255.255",
+    "::1",  # IPv6 loopback — now accepted (audit F-008)
+    "fe80::1",  # IPv6 link-local
+    "2001:db8::42",  # IPv6 global
 ]
 
 INVALID_IPS = [
@@ -67,7 +70,7 @@ INVALID_IPS = [
     "192.168.1.1.1",
     "not-an-ip",
     "",
-    "::1",  # IPv6 — if not supported by model validator
+    ":::::::",  # malformed IPv6
     " 192.168.1.1",  # leading space
     "192.168.1.1 ",  # trailing space
     "1.2.3.4\x00",  # Null terminator

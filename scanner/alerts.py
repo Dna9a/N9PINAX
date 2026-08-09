@@ -96,8 +96,12 @@ def _alerts_for_banner_red_flags(device: Device, scan: ScanResult) -> Iterable[A
     for port in device.get_open_ports():
         if not port.banner:
             continue
+        banner_lc = port.banner.lower()
         for needle, severity, description in _BANNER_RED_FLAGS:
-            if needle in port.banner:
+            # Case-insensitive: real-world banners vary in casing
+            # ("Apache/2.2" vs "apache/2.2"), so an exact-case match under-detects
+            # end-of-life software (audit F-017).
+            if needle.lower() in banner_lc:
                 yield Alert(
                     scan_id=scan.scan_id,
                     severity=severity,

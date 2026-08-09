@@ -110,6 +110,23 @@ def _load_fingerprints() -> list[dict]:
     return _BUILTIN_FINGERPRINTS
 
 
+# Load the fingerprint DB at most once, not on every captured packet. The
+# previous code re-read (and JSON-parsed) the file inside the scapy sniff
+# callback — a needless disk hit per packet in the hot path (audit F-042).
+_FINGERPRINTS_CACHE: list[dict] | None = None
+_fp_cache_lock = threading.Lock()
+
+
+def _get_fingerprints() -> list[dict]:
+    """Return the fingerprint DB, reading it from disk at most once."""
+    global _FINGERPRINTS_CACHE
+    if _FINGERPRINTS_CACHE is None:
+        with _fp_cache_lock:
+            if _FINGERPRINTS_CACHE is None:
+                _FINGERPRINTS_CACHE = _load_fingerprints()
+    return _FINGERPRINTS_CACHE
+
+
 # ─────────────────────────────────────────────
 # Parsing DHCP
 # ─────────────────────────────────────────────
@@ -214,7 +231,7 @@ _capture_lock = threading.Lock()
 
 def _process_dhcp_packet(pkt) -> None:
     """Callback appelé par Scapy pour chaque paquet DHCP capturé."""
-    fingerprints = _load_fingerprints()
+    fingerprints = _get_fingerprints()
 
     options = _extract_dhcp_options(pkt)
     mac = _extract_client_mac(pkt)
@@ -252,8 +269,10 @@ def start_passive_capture(
         return {}
 
     conf.verb = 0
-    global _captured
-    _captured = {}
+    # Reset shared capture state in place under the lock (no global rebind) so
+    # a concurrent sniff callback can never race with the reset (audit F-043).
+    with _capture_lock:
+        _captured.clear()
 
     print(f"[*] Écoute DHCP passive pendant {timeout}s ...")
 
@@ -272,8 +291,10 @@ def start_passive_capture(
         _log.warning("DHCP sniff failed: %s", e)
         return {}
 
-    print(f"[+] {len(_captured)} appareil(s) identifié(s) via DHCP")
-    return dict(_captured)
+    with _capture_lock:
+        result = dict(_captured)
+    print(f"[+] {len(result)} appareil(s) identifié(s) via DHCP")
+    return result
 
 
 # ─────────────────────────────────────────────

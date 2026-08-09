@@ -363,11 +363,17 @@ class Device(BaseModel):
     @field_validator("ip")
     @classmethod
     def validate_ip(cls, v: str) -> str:
-        """Valide que l'IP est une adresse IPv4 valide."""
+        """Valide que l'IP est une adresse IPv4 OU IPv6 valide.
+
+        Previously only ``IPv4Address`` was accepted, which rejected the IPv6
+        addresses the field's own docstring/examples advertise as valid (audit
+        F-008). ``ip_address`` accepts both families; embedded NUL bytes,
+        surrounding whitespace and malformed values are still rejected.
+        """
         if v.strip() != v:
             raise ValueError("L'adresse IP ne doit pas contenir d'espaces.")
         try:
-            ipaddress.IPv4Address(v)
+            ipaddress.ip_address(v)
             return v
         except Exception as e:
             raise ValueError(f"Adresse IP invalide : {v}. Erreur : {e}")

@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from ..config import get_config
 from ..models import Device
+from .ratelimit import rate_limited_acquire as _rate_limited_acquire
 
 _log = logging.getLogger(__name__)
 
@@ -28,24 +28,11 @@ class IcmpReply:
     alive: bool
 
 
-_rate_lock = threading.Lock()
-_last_sent: list[float] = []
-
-
 def _rate_limited_sleep() -> None:
-    """Throttle outbound probes to ``rate_limit_pps`` per second globally."""
-    cfg = get_config()
-    pps = max(1, cfg.rate_limit_pps)
-    with _rate_lock:
-        now = time.monotonic()
-        # Keep only timestamps from the last second
-        cutoff = now - 1.0
-        _last_sent[:] = [t for t in _last_sent if t > cutoff]
-        if len(_last_sent) >= pps:
-            sleep_for = 1.0 - (now - _last_sent[0])
-            if sleep_for > 0:
-                time.sleep(sleep_for)
-        _last_sent.append(time.monotonic())
+    """Throttle outbound probes via the shared cross-protocol rate limiter."""
+    # Kept as a thin wrapper for backward-compatibility; the real budget is
+    # now shared across ICMP/SYN/UDP (see scanner/core/ratelimit.py).
+    _rate_limited_acquire()
 
 
 def _icmp_probe(ip: str, timeout: float) -> IcmpReply:

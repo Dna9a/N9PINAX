@@ -43,10 +43,18 @@ def _http_request(ip: str, port: int, timeout: float = _TIMEOUT) -> str | None:
         sock.settimeout(timeout)
         sock.connect((ip, port))
 
-        # Wrap socket with TLS for HTTPS ports
+        # Wrap socket with TLS for HTTPS ports.
+        # This is a low-trust RECON banner grab, not a client establishing a
+        # secure session: we only want the Server/X-Powered-By headers. The
+        # target is addressed by bare IP and internal hosts overwhelmingly use
+        # self-signed certs, so certificate + hostname verification would fail
+        # on almost every real internal HTTPS service — a pure false-negative
+        # gap for a scanner (audit F-048). Deliberately disable verification.
         if port in _HTTPS_PORTS:
             context = ssl.create_default_context()
-            ssock = context.wrap_socket(sock, server_hostname=ip)
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            ssock = context.wrap_socket(sock)  # noqa: S501 (recon, not a trust anchor)
             conn = ssock
         else:
             conn = sock

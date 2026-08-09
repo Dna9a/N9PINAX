@@ -12,13 +12,12 @@
 from __future__ import annotations
 
 import logging
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from ..config import get_config
 from ..models import Device, Port, PortProtocol, PortState
+from .ratelimit import rate_limited_acquire as _rate_limited_acquire
 
 _log = logging.getLogger(__name__)
 
@@ -73,22 +72,9 @@ class UdpResult:
     response_bytes: int
 
 
-_rate_lock = threading.Lock()
-_last_sent: list[float] = []
-
-
 def _rate_limited_sleep() -> None:
-    cfg = get_config()
-    pps = max(1, cfg.rate_limit_pps)
-    with _rate_lock:
-        now = time.monotonic()
-        cutoff = now - 1.0
-        _last_sent[:] = [t for t in _last_sent if t > cutoff]
-        if len(_last_sent) >= pps:
-            sleep_for = 1.0 - (now - _last_sent[0])
-            if sleep_for > 0:
-                time.sleep(sleep_for)
-        _last_sent.append(time.monotonic())
+    """Throttle outbound probes via the shared cross-protocol rate limiter."""
+    _rate_limited_acquire()
 
 
 def _udp_probe(ip: str, port: int, timeout: float) -> UdpResult:

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 import socket
@@ -12,6 +13,7 @@ import subprocess
 
 from scapy.all import ARP, Ether, srp
 
+from ..config import get_config
 from ..models import Device
 
 
@@ -159,6 +161,22 @@ def arp_scan(
 
     if network is None:
         network = get_local_network()
+
+    # Cap the address space BEFORE handing the range to scapy — an accidental
+    # /8 or /0 otherwise expands into millions of ARP requests, a self-inflicted
+    # DoS and a multi-hour hang (audit F-001/F-031/F-061).
+    max_hosts = get_config().max_scan_hosts
+    if max_hosts and max_hosts > 0:
+        try:
+            net = ipaddress.ip_network(network, strict=False)
+        except ValueError as e:
+            raise ValueError(f"Réseau invalide : {network!r} ({e})")
+        if net.num_addresses > max_hosts:
+            raise ValueError(
+                f"Plage réseau trop grande : {network} "
+                f"({net.num_addresses} adresses > limite {max_hosts}). "
+                "Réduisez le CIDR ou augmentez SCANNER_MAX_SCAN_HOSTS."
+            )
 
     print(f"[*] Scan ARP sur {network} ...")
 

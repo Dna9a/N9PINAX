@@ -65,7 +65,9 @@ class ScannerConfig:
     )
 
     # Networking ────────────────────────────────────────────────────────────
-    default_network: str = os.environ.get("SCANNER_DEFAULT_NETWORK", "")
+    default_network: str = field(
+        default_factory=lambda: os.environ.get("SCANNER_DEFAULT_NETWORK", "")
+    )
     port_timeout: float = field(
         default_factory=lambda: _env_float("SCANNER_PORT_TIMEOUT", 0.5)
     )
@@ -111,15 +113,19 @@ class ScannerConfig:
     # LAN (the dashboard ships with default credentials). Set
     # SCANNER_API_HOST=0.0.0.0 to deliberately expose it; the Docker image does
     # exactly that, since the container is meant to serve the LAN.
-    api_host: str = os.environ.get("SCANNER_API_HOST", "127.0.0.1")
+    api_host: str = field(
+        default_factory=lambda: os.environ.get("SCANNER_API_HOST", "127.0.0.1")
+    )
     api_port: int = field(default_factory=lambda: _env_int("SCANNER_API_PORT", 8000))
     api_rate_limit_per_minute: int = field(
         default_factory=lambda: _env_int("SCANNER_API_RATE_PER_MIN", 60)
     )
-    api_cors_origins: tuple[str, ...] = tuple(
-        s.strip()
-        for s in os.environ.get("SCANNER_API_CORS", "*").split(",")
-        if s.strip()
+    api_cors_origins: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            s.strip()
+            for s in os.environ.get("SCANNER_API_CORS", "*").split(",")
+            if s.strip()
+        )
     )
 
     # Behaviour toggles ─────────────────────────────────────────────────────
@@ -134,6 +140,14 @@ class ScannerConfig:
     # Persistence ───────────────────────────────────────────────────────────
     keep_last_n_scans: int = field(
         default_factory=lambda: _env_int("SCANNER_KEEP_LAST_N_SCANS", 200)
+    )
+
+    # Safety cap on how many addresses a single scan may expand to before an
+    # ARP sweep. Stops an accidental /8 (16M hosts) or /0 from becoming a
+    # self-inflicted DoS / multi-hour scan (audit F-001/F-031/F-061, QA-017).
+    # Default 65536 = a /16. Set to 0 to disable the cap.
+    max_scan_hosts: int = field(
+        default_factory=lambda: _env_int("SCANNER_MAX_SCAN_HOSTS", 65536)
     )
 
     def ensure_dirs(self) -> None:

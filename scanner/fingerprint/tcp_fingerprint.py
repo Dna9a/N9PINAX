@@ -350,7 +350,16 @@ def tcp_fingerprint(
         FingerprintResult avec os_family, os_version, confidence.
     """
     if ports is None:
-        ports = [80, 443, 22, 8080]
+        # Prefer ports we already KNOW are open from the earlier port-scan
+        # stage — a SYN probe there gets a real SYN-ACK (with the TTL/window/
+        # options we need) on the first try instead of wasting probes on closed
+        # ports (audit F-057). Fall back to the common set for anything we
+        # haven't confirmed, so a device with no known-open ports still works.
+        known_open = [p.number for p in device.get_open_ports()]
+        defaults = [80, 443, 22, 8080]
+        ports = known_open + [p for p in defaults if p not in known_open]
+        if not ports:
+            ports = defaults
 
     signatures = _load_signatures()
 
@@ -406,15 +415,23 @@ def tcp_fingerprint(
     return result
 
 
-def _ttl_to_os_family(ttl: int) -> OSFamily:
-    """Déduit l'OS family depuis le TTL seul (fallback)."""
-    if ttl >= 250:
-        return OSFamily.NETWORK_DEVICE
-    elif ttl >= 120:
-        return OSFamily.WINDOWS
-    elif ttl >= 56:
+def _ttl_to_os_family(ttl: int | None) -> OSFamily:
+    """Déduit l'OS family depuis le TTL seul (fallback).
+
+    Observed TTL = initial_TTL − hops, so it only ever *decreases* along the
+    path. Rather than matching narrow "directly-attached" bands, pick the
+    smallest standard initial TTL (64 = Linux/macOS, 128 = Windows, 255 =
+    network gear) that is still ≥ the observed value. This tolerates multi-hop
+    routes instead of falling through to Unknown once a host is more than a few
+    hops away (audit F-055).
+    """
+    if ttl is None or ttl <= 0:
+        return OSFamily.UNKNOWN
+    if ttl <= 64:
         return OSFamily.LINUX
-    return OSFamily.UNKNOWN
+    if ttl <= 128:
+        return OSFamily.WINDOWS
+    return OSFamily.NETWORK_DEVICE
 
 
 # ─────────────────────────────────────────────

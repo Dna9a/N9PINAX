@@ -248,7 +248,11 @@ def run_scan(
 
     def _arp() -> None:
         nonlocal devices
-        devices = arp_scan(network=network, resolve_hostnames=False)
+        # Wire the configured ARP timeout through — it was previously a dead
+        # knob (SCANNER_ARP_TIMEOUT had no effect from the pipeline, audit F-035).
+        devices = arp_scan(
+            network=network, timeout=cfg.arp_timeout, resolve_hostnames=False
+        )
 
     try:
         _safe_step("Étape 1 : ARP scan", _arp, fatal=True, progress=progress)
@@ -354,7 +358,16 @@ def run_scan(
     if cfg.enable_alerts:
         try:
             alerts = alerts_engine.evaluate(result)
-            prev = load_last_scan(cfg.db_path)
+            # The historical diff is best-effort. On the very first scan the DB
+            # tables don't exist yet, and load_last_scan() raised — which used
+            # to be caught by the OUTER except and silently discard EVERY alert
+            # for that scan (audit QA-002). Isolate it so current-scan alerts
+            # always survive.
+            prev = None
+            try:
+                prev = load_last_scan(cfg.db_path)
+            except Exception as diff_err:
+                _log.debug("No previous scan for diff alerts: %s", diff_err)
             if prev is not None:
                 alerts.extend(
                     alerts_engine.evaluate_diff(
@@ -398,6 +411,20 @@ def _truncate(s: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+def _ip_sort_key(ip: str) -> tuple[int, int]:
+    """Sort key that orders IPv4 numerically and never crashes on IPv6.
+
+    The old key parsed ``ip.split(".")`` as ints, which raised on any IPv6
+    address the model now accepts (F-008). Using :mod:`ipaddress` sorts both
+    families correctly (v4 before v6) and degrades gracefully on junk.
+    """
+    try:
+        addr = ipaddress.ip_address(ip)
+        return (addr.version, int(addr))
+    except ValueError:
+        return (9, 0)
+
+
 def print_scan_summary(result: ScanResult) -> None:
     print(_header("RÉSUMÉ DU SCAN"))
     print(f"  Réseau      : {_bold(result.network)}")
@@ -418,9 +445,7 @@ def print_scan_summary(result: ScanResult) -> None:
     print(line)
     print("  " + "─" * (sum(widths) + len(widths) * 3))
 
-    for d in sorted(
-        result.devices, key=lambda x: tuple(int(p) for p in x.ip.split("."))
-    ):
+    for d in sorted(result.devices, key=lambda x: _ip_sort_key(x.ip)):
         fp = d.fingerprint
         os_str = fp.os_family.value if fp else "Unknown"
         conf = fp.confidence if fp else 0.0
@@ -678,9 +703,17 @@ Examples:
 def _validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if args.network is not None:
         try:
-            ipaddress.ip_network(args.network, strict=False)
+            net = ipaddress.ip_network(args.network, strict=False)
         except ValueError:
             parser.error(f"Invalid CIDR network: {args.network!r}")
+        else:
+            max_hosts = get_config().max_scan_hosts
+            if max_hosts and max_hosts > 0 and net.num_addresses > max_hosts:
+                parser.error(
+                    f"--network {args.network} expands to {net.num_addresses} "
+                    f"addresses, over the {max_hosts}-host safety cap. Use a "
+                    "smaller CIDR or raise SCANNER_MAX_SCAN_HOSTS."
+                )
 
     if args.timeout is not None and not (0.01 <= args.timeout <= 30):
         parser.error("--timeout must be between 0.01 and 30 seconds")

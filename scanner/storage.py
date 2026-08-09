@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 import sqlite3
 import stat
@@ -27,6 +28,27 @@ from .models import (
     PortProtocol,
     ScanResult,
 )
+
+_log = logging.getLogger(__name__)
+
+
+def _csv_safe(value) -> str:
+    """Neutralise CSV/spreadsheet formula injection.
+
+    A cell whose text begins with ``=``, ``+``, ``-``, ``@`` (or a leading tab/
+    CR) is executed as a formula by Excel/LibreOffice when an analyst opens the
+    exported report. Several CSV columns carry attacker-influenceable text —
+    hostnames (spoofable via reverse-DNS/PTR) and OS versions derived from
+    service banners — so we prefix a single quote to force text interpretation
+    (audit F-024). Returns "" for None.
+    """
+    if value is None:
+        return ""
+    s = str(value)
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + s
+    return s
+
 
 # ─────────────────────────────────────────────
 # Config
@@ -392,8 +414,8 @@ def save_scan(
         # ── Retention: prune scans beyond the newest keep_last_n ──────
         try:
             _prune_old_scans(conn, keep_last_n)
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as e:
+            _log.warning("Scan retention pruning failed: %s", e)
 
     print(f"[+] Scan sauvegardé : {scan.scan_id} ({scan.total_hosts} hôte(s))")
     return scan.scan_id
@@ -452,7 +474,8 @@ def _row_to_device(row: sqlite3.Row, ports: list[sqlite3.Row]) -> Device:
                     os_hint=p["os_hint"],
                 )
             )
-        except Exception:
+        except Exception as e:
+            _log.debug("Dropping malformed port row for %s: %s", row["ip"], e)
             continue
 
     latency_ms: float | None = None
@@ -944,7 +967,8 @@ def export_json(
         output_path: Chemin de sortie (défaut: data/export_<scan_id[:8]>.json).
 
     Returns:
-        Chemin du fichier créé (string).
+        Le CONTENU JSON du fichier écrit (string), ou None si le scan est
+        introuvable. (Le fichier est aussi écrit sur disque à ``output_path``.)
     """
     _validate_scan_id(scan_id)
     db_p = Path(db_path)
@@ -979,7 +1003,8 @@ def export_csv(
         output_path: Chemin de sortie (défaut: data/export_<scan_id[:8]>.csv).
 
     Returns:
-        Chemin du fichier créé (string).
+        Le CONTENU CSV du fichier écrit (string). (Le fichier est aussi écrit
+        sur disque à ``output_path``.) Lève ValueError si le scan est introuvable.
     """
     _validate_scan_id(scan_id)
     db_p = Path(db_path)
@@ -1020,10 +1045,10 @@ def export_csv(
                 {
                     "ip": device.ip,
                     "mac": device.mac,
-                    "hostname": device.hostname,
-                    "mac_vendor": device.mac_vendor,
+                    "hostname": _csv_safe(device.hostname),
+                    "mac_vendor": _csv_safe(device.mac_vendor),
                     "os_family": fp.os_family.value if fp else "",
-                    "os_version": fp.os_version if fp else "",
+                    "os_version": _csv_safe(fp.os_version) if fp else "",
                     "device_type": fp.device_type.value if fp else "",
                     "confidence": f"{fp.confidence:.0%}" if fp else "",
                     "open_ports": ";".join(
