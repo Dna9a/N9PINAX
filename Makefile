@@ -5,18 +5,29 @@
 # ─────────────────────────────────────────────
 # Colors for terminal output
 # ─────────────────────────────────────────────
+# Embed a REAL escape byte (via printf) rather than the literal two-char "\033".
+# This renders correctly regardless of whether recipes run under bash or dash —
+# bash's builtin `echo` does not expand `\033` without -e, which would otherwise
+# print the raw escape codes on distros where /bin/sh is bash.
 
-RED = \033[31m
-GREEN = \033[32m
-YELLOW = \033[33m
-BLUE = \033[34m
-CYAN = \033[36m
-BRIGHT = \033[1m
-RESET = \033[0m
+ESC := $(shell printf '\033')
+RED = $(ESC)[31m
+GREEN = $(ESC)[32m
+YELLOW = $(ESC)[33m
+BLUE = $(ESC)[34m
+CYAN = $(ESC)[36m
+BRIGHT = $(ESC)[1m
+RESET = $(ESC)[0m
 
 # ─────────────────────────────────────────────
 # Variables
 # ─────────────────────────────────────────────
+
+# Use bash for recipes (the recipes rely on bashisms like `read -p`, `case`,
+# and `[ -n ]`). bash ships on Arch, Debian/Ubuntu, Fedora, RHEL and openSUSE;
+# this makes recipe behaviour identical across distros instead of depending on
+# whatever /bin/sh happens to be (dash on Debian, bash elsewhere).
+SHELL := bash
 
 VENV         ?= $(HOME)/CamelEnv🐪
 PYTHON       := $(VENV)/bin/python3
@@ -30,7 +41,7 @@ SCANNER_PKG       := scanner
 # Phony targets
 # ─────────────────────────────────────────────
 
-.PHONY: help up down restart logs build uninstall purge status start stop install virgin dev test run run-sudo run-backend run-backend-sudo run-backend-reload setup-caps clean clean-py clean-web clean-all lint fmt check all
+.PHONY: help up down restart logs build uninstall purge status start stop install virgin dev test run run-sudo run-list run-backend run-backend-sudo run-backend-reload setup-caps install-web clean clean-py clean-web clean-all lint fmt check all koulxi
 
 
 # ─────────────────────────────────────────────
@@ -54,7 +65,7 @@ help:
 	@echo ""
 	@echo "$(GREEN)Development:$(RESET)"
 	@echo "  make install       — Install dependencies from requirements.txt"
-	@echo "  make virgin        — Setup a clean environment with Python 3.14 (Debian/Ubuntu)"
+	@echo "  make virgin        — Setup a clean venv (auto-installs Python; Arch/Debian/Ubuntu/Fedora/RHEL/SUSE)"
 	@echo "  make dev           — Install development dependencies (including test tools)"
 	@echo ""
 	@echo "$(CYAN)Local (no Docker):$(RESET)"
@@ -76,7 +87,9 @@ help:
 	@echo "  make clean         — Remove cache, compiled files, databases"
 	@echo "  make clean-py      — Remove Python caches, venvs, and scanner build artifacts"
 	@echo "  make clean-web     — Remove web build artifacts and uninstall web deps (if venv active)"
-	@echo "  make clean-all     — Full clean: remove caches, web artifacts, venv and build artifacts"	@echo "  make purge         — Clean all scan data (database and results)"	@echo ""
+	@echo "  make clean-all     — Full clean: remove caches, web artifacts, venv and build artifacts"
+	@echo "  make purge         — Clean all scan data (database and results)"
+	@echo ""
 	@echo "$(GREEN)Meta:$(RESET)"
 	@echo "  make koulxi         — Full setup, test, and run sequence (virgin + install + test + run-backend)"
 	@echo ""
@@ -149,35 +162,94 @@ stop:
 # Installation
 # ─────────────────────────────────────────────
 
+# ── Portable Python bootstrap ────────────────────────────────────────────────
+# The project targets Python 3.14 but the scanner/backend run on any CPython
+# >= 3.11. `virgin` finds a suitable interpreter, installs one via the host's
+# package manager if none exists (Arch/Debian/Ubuntu/Fedora/RHEL/SUSE/Alpine),
+# then builds the venv with whatever it found. Distro package managers name the
+# binary differently (python3.14 on deadsnakes/Fedora, plain `python` on Arch),
+# so we never hardcode a single binary name.
+#
+# IMPORTANT: this recipe is intentionally self-contained (no `$(MAKE)`
+# sub-invocations). A recipe line containing `$(MAKE)` is executed by GNU make
+# even under `make -n`, which for a destructive recipe like this (it `rm -rf`s
+# the venv) would make a "dry run" wipe the environment. Keeping it plain shell
+# means `make -n virgin` only prints.
 virgin:
-	@echo "$(CYAN)🌱 Preparing environment with Python 3.14...$(RESET)"
-	@if ! command -v python3.14 > /dev/null; then \
-		echo "$(YELLOW)Python 3.14 not found. Attempting to install...$(RESET)"; \
-		sudo apt-get update && sudo apt-get install -y software-properties-common; \
-		sudo add-apt-repository -y PPA:deadsnakes/ppa; \
-		sudo apt-get update && sudo apt-get install -y python3.14 python3.14-venv python3.14-dev; \
-	fi
-	@echo "$(RED)🧹 Removing existing environment at $(VENV)...$(RESET)"
-	@rm -rf $(VENV)
-	@echo "$(GREEN)👾 Creating venv at $(VENV)...$(RESET)"
-	@python3.14 -m venv $(VENV)
-	@$(PIP) install --upgrade pip
-	@$(PIP) install -r $(REQUIREMENTS)
-	@echo "$(CYAN)🖇 Adding aliases to shell config files...$(RESET)"
-	@if [ -f ~/.bashrc ]; then \
-		if ! grep -q "alias na9a=" ~/.bashrc; then \
-			echo "alias na9a='source $(VENV)/bin/activate'" >> ~/.bashrc; \
-			echo "alias tfi='deactivate'" >> ~/.bashrc; \
-			echo "$(BLUE)✓ Aliases added to ~/.bashrc$(RESET)"; \
-		fi \
-	fi
-	@if [ -f ~/.zshrc ]; then \
-		if ! grep -q "alias na9a=" ~/.zshrc; then \
-			echo "alias na9a='source $(VENV)/bin/activate'" >> ~/.zshrc; \
-			echo "alias tfi='deactivate'" >> ~/.zshrc; \
-			echo "$(BLUE)✓ Aliases added to ~/.zshrc$(RESET)"; \
-		fi \
-	fi
+	@echo "$(CYAN)🌱 Preparing environment (auto-detecting distro & Python)...$(RESET)"
+	@set -e; \
+	find_python() { \
+		for c in python3.14 python3.13 python3.12 python3.11 python3 python; do \
+			if command -v $$c >/dev/null 2>&1 && \
+			   $$c -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 11) else 1)' >/dev/null 2>&1; then \
+				command -v $$c; return 0; \
+			fi; \
+		done; \
+		return 1; \
+	}; \
+	PY="$$(find_python || true)"; \
+	if [ -z "$$PY" ]; then \
+		echo "$(YELLOW)No suitable Python (>=3.11) found — installing via your package manager...$(RESET)"; \
+		SUDO="$$(command -v sudo 2>/dev/null || true)"; \
+		if [ -r /etc/os-release ]; then . /etc/os-release; fi; \
+		distro="$${ID:-} $${ID_LIKE:-}"; \
+		echo "$(CYAN)Detected distro: $${ID:-unknown} (like: $${ID_LIKE:-n/a})$(RESET)"; \
+		case "$$distro" in \
+			*arch*|*manjaro*|*endeavour*|*garuda*) \
+				$$SUDO pacman -Sy --noconfirm --needed python python-pip ;; \
+			*debian*|*ubuntu*|*mint*|*pop*|*kali*) \
+				$$SUDO apt-get update; \
+				$$SUDO apt-get install -y software-properties-common ca-certificates; \
+				if $$SUDO add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null && $$SUDO apt-get update; then \
+					$$SUDO apt-get install -y python3.14 python3.14-venv python3.14-dev \
+					 || $$SUDO apt-get install -y python3 python3-venv python3-dev python3-pip; \
+				else \
+					$$SUDO apt-get install -y python3 python3-venv python3-dev python3-pip; \
+				fi ;; \
+			*fedora*) \
+				$$SUDO dnf install -y python3.14 python3.14-devel \
+				 || $$SUDO dnf install -y python3 python3-devel python3-pip ;; \
+			*rhel*|*centos*|*rocky*|*alma*) \
+				$$SUDO dnf install -y python3.14 || $$SUDO dnf install -y python3 python3-pip \
+				 || $$SUDO yum install -y python3 python3-pip ;; \
+			*suse*|*opensuse*) \
+				$$SUDO zypper --non-interactive install python314 python314-pip \
+				 || $$SUDO zypper --non-interactive install python3 python3-pip ;; \
+			*alpine*) \
+				$$SUDO apk add --no-cache python3 py3-pip ;; \
+			*) \
+				echo "$(RED)⚠ Unrecognised distro '$${ID:-?}'.$(RESET)"; \
+				echo "$(YELLOW)  Install Python 3.14 (or any Python >= 3.11) with your package manager, then re-run 'make virgin'.$(RESET)"; \
+				exit 1 ;; \
+		esac; \
+		PY="$$(find_python || true)"; \
+	fi; \
+	if [ -z "$$PY" ]; then \
+		echo "$(RED)✗ Could not find or install a suitable Python 3 (>=3.11).$(RESET)"; exit 1; \
+	fi; \
+	echo "$(GREEN)✓ Using interpreter: $$PY ($$($$PY --version 2>&1))$(RESET)"; \
+	case "$$($$PY --version 2>&1)" in \
+		*" 3.14"*) : ;; \
+		*) echo "$(YELLOW)ℹ Project targets Python 3.14; using the above instead (fine for local dev).$(RESET)" ;; \
+	esac; \
+	echo "$(RED)🧹 Removing existing environment at $(VENV)...$(RESET)"; \
+	rm -rf "$(VENV)"; \
+	echo "$(GREEN)👾 Creating venv at $(VENV)...$(RESET)"; \
+	if ! "$$PY" -m venv "$(VENV)"; then \
+		echo "$(RED)✗ venv creation failed — your Python lacks the 'venv' module.$(RESET)"; \
+		echo "$(YELLOW)  Debian/Ubuntu: sudo apt-get install python3-venv (or python3.14-venv)$(RESET)"; \
+		exit 1; \
+	fi; \
+	"$(PIP)" install --upgrade pip; \
+	"$(PIP)" install -r $(REQUIREMENTS); \
+	echo "$(CYAN)🖇 Adding aliases to shell config files...$(RESET)"; \
+	for rc in "$$HOME/.bashrc" "$$HOME/.zshrc"; do \
+		if [ -f "$$rc" ] && ! grep -q "alias na9a=" "$$rc"; then \
+			echo "alias na9a='source $(VENV)/bin/activate'" >> "$$rc"; \
+			echo "alias tfi='deactivate'" >> "$$rc"; \
+			echo "$(BLUE)✓ Aliases added to $$rc$(RESET)"; \
+		fi; \
+	done
 	@echo ""
 	@echo "$(GREEN)✓ Virgin environment setup complete! 🐪$(RESET)"
 	@echo "$(YELLOW)To use the new alias, run:$(RESET) source ~/.bashrc (or ~/.zshrc)"
@@ -238,10 +310,20 @@ run-backend-sudo:
 # Run this once after install; re-run if Python is upgraded.
 setup-caps:
 	@echo "$(CYAN)🔑 Granting CAP_NET_RAW + CAP_NET_ADMIN to Python (requires sudo)...$(RESET)"
-	@PY=$$(command -v python3.14 2>/dev/null || command -v python3 2>/dev/null); \
-	REAL=$$(readlink -f "$$PY"); \
+	@set -e; \
+	if [ -x "$(PYTHON)" ]; then PY="$(PYTHON)"; \
+	else PY="$$(command -v python3.14 || command -v python3 || command -v python || true)"; fi; \
+	if [ -z "$$PY" ]; then \
+		echo "$(RED)✗ No Python found. Run 'make virgin' first.$(RESET)"; exit 1; \
+	fi; \
+	if ! command -v setcap >/dev/null 2>&1; then \
+		echo "$(YELLOW)⚠ 'setcap' not found. Install libcap (Debian/Ubuntu: libcap2-bin, Arch: libcap, Fedora: libcap).$(RESET)"; \
+		exit 1; \
+	fi; \
+	REAL="$$(readlink -f "$$PY")"; \
 	echo "  → setcap on $$REAL"; \
-	sudo setcap 'cap_net_raw,cap_net_admin+eip' "$$REAL"; \
+	SUDO="$$(command -v sudo 2>/dev/null || true)"; \
+	$$SUDO setcap 'cap_net_raw,cap_net_admin+eip' "$$REAL"; \
 	echo "$(GREEN)✓ Done. You can now run 'make run-backend' without sudo for scanning.$(RESET)"
 
 # Development target: auto-reload on code changes (requires uvicorn)

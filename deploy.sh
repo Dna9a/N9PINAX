@@ -173,6 +173,63 @@ _ensure_docker() {
   success "Compose: ${COMPOSE_CMD}"
 }
 
+# ─── Portable Python bootstrap (local mode) ───────────────────────────────────
+# The project targets Python 3.14 but runs on any CPython >= 3.11. Distro
+# package managers name the binary differently (python3.14 on deadsnakes/
+# Fedora, plain `python` on Arch), so we discover whatever is available rather
+# than hardcoding `python3.14` (audit F-121).
+
+# Echo the path of the first suitable Python interpreter (>=3.11), or nothing.
+_find_python() {
+  local c
+  for c in python3.14 python3.13 python3.12 python3.11 python3 python; do
+    if command -v "${c}" &>/dev/null && \
+       "${c}" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 11) else 1)' &>/dev/null; then
+      command -v "${c}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Install a Python interpreter using the detected distro's package manager.
+_install_python() {
+  local os_id="" os_like=""
+  if [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    os_id=$(. /etc/os-release && echo "${ID:-}")
+    os_like=$(. /etc/os-release && echo "${ID_LIKE:-}")
+  fi
+  local distro="${os_id} ${os_like}"
+  info "Detected distro: ${os_id:-unknown} (like: ${os_like:-n/a})"
+  case "${distro}" in
+    *arch*|*manjaro*|*endeavour*|*garuda*)
+      sudo pacman -Sy --noconfirm --needed python python-pip ;;
+    *debian*|*ubuntu*|*mint*|*pop*|*kali*)
+      sudo apt-get update -qq
+      sudo apt-get install -y -qq software-properties-common ca-certificates
+      if sudo add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null && sudo apt-get update -qq; then
+        sudo apt-get install -y -qq python3.14 python3.14-venv python3.14-dev \
+          || sudo apt-get install -y -qq python3 python3-venv python3-dev python3-pip
+      else
+        sudo apt-get install -y -qq python3 python3-venv python3-dev python3-pip
+      fi ;;
+    *fedora*)
+      sudo dnf install -y python3.14 python3.14-devel \
+        || sudo dnf install -y python3 python3-devel python3-pip ;;
+    *rhel*|*centos*|*rocky*|*alma*)
+      sudo dnf install -y python3.14 || sudo dnf install -y python3 python3-pip \
+        || sudo yum install -y python3 python3-pip ;;
+    *suse*|*opensuse*)
+      sudo zypper --non-interactive install python314 python314-pip \
+        || sudo zypper --non-interactive install python3 python3-pip ;;
+    *alpine*)
+      sudo apk add --no-cache python3 py3-pip ;;
+    *)
+      error "Unrecognised distro '${os_id:-?}'. Install Python 3.14 (or any Python >= 3.11) with your package manager, then re-run." ;;
+  esac
+}
+
 # ─── Stop mode ───────────────────────────────────────────────────────────────
 if [[ "${MODE}" == "--stop" ]]; then
   banner
@@ -189,27 +246,26 @@ if [[ "${MODE}" == "--local" ]]; then
   banner
   info "Local deployment mode"
 
-  # Check Python 3.14
-  if ! command -v python3.14 &>/dev/null; then
-    warn "Python 3.14 not found. Attempting to install..."
-    if command -v pacman &>/dev/null; then
-      sudo pacman -Sy --noconfirm python 2>/dev/null || true
-    elif command -v apt-get &>/dev/null; then
-      sudo apt-get update -qq
-      sudo apt-get install -y software-properties-common
-      sudo add-apt-repository -y ppa:deadsnakes/ppa
-      sudo apt-get update -qq
-      sudo apt-get install -y python3.14 python3.14-venv python3.14-dev
-    else
-      error "Python 3.14 not found. Install it first."
-    fi
+  # Find (or install) a suitable Python interpreter — not necessarily named
+  # "python3.14" (Arch calls it "python").
+  PY="$(_find_python || true)"
+  if [[ -z "${PY}" ]]; then
+    warn "No suitable Python (>=3.11) found. Attempting to install..."
+    _install_python
+    PY="$(_find_python || true)"
   fi
-  success "Python $(python3.14 --version)"
+  [[ -z "${PY}" ]] && error "Could not find or install a suitable Python 3 (>=3.11)."
+  success "Python: $("${PY}" --version 2>&1) (${PY})"
+  case "$("${PY}" --version 2>&1)" in
+    *" 3.14"*) : ;;
+    *) warn "Project targets Python 3.14; using the above instead (fine for local dev)." ;;
+  esac
 
   # Create venv if needed
   if [[ ! -d "${VENV_DIR}" ]]; then
     info "Creating virtualenv at ${VENV_DIR}..."
-    python3.14 -m venv "${VENV_DIR}"
+    "${PY}" -m venv "${VENV_DIR}" \
+      || error "venv creation failed — your Python may lack the 'venv' module (Debian/Ubuntu: sudo apt-get install python3-venv)."
   fi
 
   source "${VENV_DIR}/bin/activate"
@@ -228,7 +284,7 @@ if [[ "${MODE}" == "--local" ]]; then
 
   # Generate JWT secret if missing
   if [[ -z "${SCANNER_JWT_SECRET:-}" || "${SCANNER_JWT_SECRET}" == "replace-with-a-strong-random-secret" ]]; then
-    SECRET=$(python3.14 -c "import secrets; print(secrets.token_hex(32))")
+    SECRET=$(python -c "import secrets; print(secrets.token_hex(32))")
     sed -i "s|^SCANNER_JWT_SECRET=.*|SCANNER_JWT_SECRET=${SECRET}|" "${PROJECT_DIR}/.env"
     warn "Generated new SCANNER_JWT_SECRET and saved to .env"
     export SCANNER_JWT_SECRET="${SECRET}"
