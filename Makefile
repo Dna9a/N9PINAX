@@ -103,7 +103,10 @@ _COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compo
 
 up:
 	@echo "$(GREEN)🚀 Starting N9pinax (docker compose)...$(RESET)"
-	@$(_COMPOSE) up --build -d
+	@# Clear stale containers from an interrupted run so their fixed
+	@# container_names (na9a-scanner / na9a-redis) can't cause a name conflict.
+	@docker rm -f na9a-scanner na9a-redis >/dev/null 2>&1 || true
+	@$(_COMPOSE) up --build -d --remove-orphans
 	@echo "$(GREEN)✓ Platform is up. Open http://localhost:8000 in your browser.$(RESET)"
 	@echo "$(YELLOW)  From other devices: http://<this-machine-IP>:8000$(RESET)"
 

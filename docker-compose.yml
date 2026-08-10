@@ -12,15 +12,20 @@ services:
       - NET_ADMIN
       - NET_RAW
 
-    # Host networking: the container shares the host's network stack so Scapy
-    # sees the real LAN interfaces (e.g. wlan0 / eth0) instead of the Docker
-    # bridge. This is required for ARP discovery to find actual LAN devices.
+    # ── Networking ────────────────────────────────────────────────────────
+    # DEFAULT: bridge networking with a published port. The dashboard/API are
+    # reliably reachable at http://localhost:8000 on Linux, macOS AND
+    # Windows/WSL2. Bridge mode CANNOT ARP-scan the physical LAN (the container
+    # only sees the Docker bridge) — but on Docker Desktop (macOS/Windows/WSL2)
+    # `network_mode: host` can't reach the physical LAN either, and it is flaky
+    # (its port-forwarder can wedge port 8000). So bridge is the portable default.
     #
-    # Side-effects:
-    #   • 'ports:' is ignored — the app binds directly on the host's 0.0.0.0:8000
-    #   • The 'redis' service hostname does not resolve; use 127.0.0.1 instead
-    #     (Docker maps redis:6379 → 127.0.0.1:6379 on the host)
-    network_mode: host
+    # For real-LAN ARP discovery on a NATIVE LINUX host, comment out the two
+    # `ports:` lines below, uncomment `network_mode: host`, and set
+    # REDIS_URL=redis://127.0.0.1:6379/0 in your .env.
+    ports:
+      - "${SCANNER_API_PORT:-8000}:8000"
+    # network_mode: host
 
     # Baseline container env — safe defaults from example.env, overridden by
     # per-deployment values resolved from the project .env file.
@@ -40,9 +45,10 @@ services:
       SCANNER_REPORT_PATH: /data/scan_report.txt
       SCANNER_LOG_PATH: /data/scanner.log
 
-      # Redis — with host networking the container sees the host's loopback,
-      # so we address Redis by 127.0.0.1 (not the 'redis' service hostname).
-      REDIS_URL: "${REDIS_URL:-redis://127.0.0.1:6379/0}"
+      # Redis — on the default bridge, reach it by its compose service name.
+      # (If you switch the scanner to network_mode: host, set this to
+      # redis://127.0.0.1:6379/0 in your .env instead.)
+      REDIS_URL: "${REDIS_URL:-redis://redis:6379/0}"
 
       # Scan behaviour (optional overrides)
       SCANNER_PORT_TIMEOUT: "${SCANNER_PORT_TIMEOUT:-0.5}"

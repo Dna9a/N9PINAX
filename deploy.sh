@@ -343,7 +343,13 @@ ${COMPOSE_CMD} build --quiet
 success "Image built."
 
 info "Starting container..."
-${COMPOSE_CMD} up -d
+# Clear any state from a previous run first. `down` handles containers this
+# compose project still tracks; the explicit rm -f mops up stale containers
+# left behind by an interrupted run (their fixed container_names —
+# na9a-scanner / na9a-redis — would otherwise cause a name conflict).
+${COMPOSE_CMD} down --remove-orphans 2>/dev/null || true
+${DOCKER_CMD} rm -f na9a-scanner na9a-redis 2>/dev/null || true
+${COMPOSE_CMD} up -d --remove-orphans
 success "Container running."
 
 echo ""
