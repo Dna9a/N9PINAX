@@ -76,11 +76,11 @@ _log = logging.getLogger(__name__)
 VERSION = "2.0.0"
 _STARTED_AT = time.time()
 _FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
-# Local dev fallback: Docker copies "Frontend  2/" → "frontend/", but when
+# Local dev fallback: Docker copies "Frontend/" → "frontend/", but when
 # running outside a container that target doesn't exist. Fall back to the
 # source tree so `make run-backend` works without any manual symlink.
 if not _FRONTEND_DIR.exists():
-    _alt = Path(__file__).resolve().parent.parent / "Frontend  2"
+    _alt = Path(__file__).resolve().parent.parent / "Frontend"
     if _alt.exists():
         _FRONTEND_DIR = _alt
 

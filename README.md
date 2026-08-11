@@ -219,7 +219,7 @@ n9pinax/
 │   ├── report.py                # report/export generation
 │   ├── storage.py               # SQLite persistence
 │   └── ...                      # models, utilities
-├── Frontend 2/                  # Static UI
+├── Frontend/                     # Static UI
 │   ├── pages/                   # HTML pages (scan, devices, alerts, reports, admin, notes)
 │   ├── js/                      # UI logic, API helpers, SSE handling
 │   ├── css/                     # layout styles

@@ -5,7 +5,7 @@
 from html.parser import HTMLParser
 from pathlib import Path
 
-_FRONTEND = Path(__file__).resolve().parent.parent / "Frontend  2"
+_FRONTEND = Path(__file__).resolve().parent.parent / "Frontend"
 
 
 def _html_files():

@@ -34,11 +34,11 @@ COPY --from=build /usr/local/lib/python3.14 /usr/local/lib/python3.14
 COPY --from=build /usr/local/bin /usr/local/bin
 
 # Copy application source.
-# The shipped UI is the "Frontend  2" directory (note: two spaces). It is
-# copied to ./frontend/ so backend.app's _FRONTEND_DIR (=../frontend) serves it.
+# The shipped UI lives in "Frontend/". It is copied to ./frontend/ so
+# backend.app's _FRONTEND_DIR (=../frontend) serves it.
 COPY scanner/ ./scanner/
 COPY backend/  ./backend/
-COPY ["Frontend  2/", "./frontend/"]
+COPY Frontend/ ./frontend/
 
 # Create data directory for SQLite and reports
 RUN mkdir -p /data
