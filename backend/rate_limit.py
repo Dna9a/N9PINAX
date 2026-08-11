@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections import defaultdict, deque
 from threading import Lock
@@ -21,6 +22,13 @@ from scanner.config import get_config
 from .redis_client import get_redis
 
 _log = logging.getLogger(__name__)
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
 class TokenBucket:
@@ -52,6 +60,24 @@ def _bucket() -> TokenBucket:
     return _BUCKET
 
 
+def _client_ip(request: Request) -> str:
+    """Resolve the client IP used as the rate-limit key.
+
+    Behind a reverse proxy every request appears to come from the proxy's IP,
+    so one shared IP would exhaust the limit for everyone (audit F-074). When
+    ``SCANNER_TRUST_PROXY`` is enabled we use the left-most ``X-Forwarded-For``
+    entry (the original client). It's OFF by default because a client can forge
+    that header when NOT behind a trusted proxy — enable it only when a proxy
+    you control always sets/overwrites XFF.
+    """
+    if _env_bool("SCANNER_TRUST_PROXY", False):
+        xff = request.headers.get("x-forwarded-for", "")
+        first = xff.split(",")[0].strip()
+        if first:
+            return first
+    return request.client.host if request.client else "anonymous"
+
+
 def _too_many() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -62,7 +88,7 @@ def _too_many() -> HTTPException:
 
 async def enforce_rate_limit(request: Request) -> None:
     """FastAPI dependency — raises 429 when the per-IP budget is exhausted."""
-    client_ip = request.client.host if request.client else "anonymous"
+    client_ip = _client_ip(request)
     limit = get_config().api_rate_limit_per_minute
 
     redis = await get_redis()

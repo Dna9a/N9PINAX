@@ -242,8 +242,24 @@ function logout() {
 // ── Auth guard ────────────────────────────────────────────────────────────
 // Call at the top of every protected page. Returns false (and redirects) when
 // there is no token.
+// Decode a JWT payload without verifying the signature (that's the server's
+// job) — used only to check client-side expiry so we bounce to login proactively.
+function _jwtExpired(token) {
+  try {
+    let b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    b64 += '='.repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(b64));
+    return typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now();
+  } catch (_) {
+    return false;  // unparseable → let the server reject it with a 401
+  }
+}
+
 function requireAuth() {
-  if (!localStorage.getItem('authToken')) {
+  const token = localStorage.getItem('authToken');
+  if (!token || _jwtExpired(token)) {
+    // No token, or it has already expired (F-092) — don't render a protected
+    // page that will only 401 on its first API call; go straight to login.
     logout();
     return false;
   }

@@ -617,7 +617,18 @@ def list_alerts(
         except sqlite3.OperationalError:
             return []
 
-    return [dict(r) for r in rows]
+    # Serialize for the API/SSE layer: expose ``resolved`` as a real bool
+    # (SSE events already send a JSON bool — keep the contract consistent) and
+    # drop the internal autoincrement ``id`` column, which is an implementation
+    # detail clients shouldn't see (audit QA-024).
+    out: list[dict] = []
+    for r in rows:
+        d = dict(r)
+        d.pop("id", None)
+        if "resolved" in d:
+            d["resolved"] = bool(d["resolved"])
+        out.append(d)
+    return out
 
 
 def mark_alert_resolved(alert_id: str, db_path: str | Path = _DB_PATH) -> bool:

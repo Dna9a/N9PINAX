@@ -349,7 +349,7 @@ def create_app() -> FastAPI:
             token=token, user_id=user["user_id"], email=user["email"], role=user["role"]
         )
 
-    @app.get("/api/auth/me")
+    @app.get("/api/auth/me", dependencies=[Depends(enforce_rate_limit)])
     async def me(user: dict = Depends(_get_current_user)):
         return {"user_id": user["sub"], "email": user["email"], "role": user["role"]}
 
@@ -602,6 +602,18 @@ def create_app() -> FastAPI:
         )
 
     # Notes
+    # Object-level authorization (audit F-068): a note belongs to its author.
+    # Non-admins may only read/modify/delete their own notes; admins see all.
+    # We return 404 (not 403) for someone else's note so its existence isn't
+    # disclosed to non-owners.
+    def _note_owned_or_404(note_id: str, user: dict) -> dict:
+        note = get_note(note_id)
+        if note is None:
+            raise HTTPException(status_code=404, detail="note not found")
+        if user.get("role") != "admin" and note.get("author") != user.get("email"):
+            raise HTTPException(status_code=404, detail="note not found")
+        return note
+
     @app.post("/api/notes", dependencies=[Depends(enforce_rate_limit)])
     async def create_note_endpoint(
         payload: NoteCreate, user: dict = Depends(_get_current_user)
@@ -624,7 +636,8 @@ def create_app() -> FastAPI:
         device_ip: Optional[str] = Query(None, max_length=45),
         user: dict = Depends(_get_current_user),
     ):
-        return list_notes(scan_id=scan_id, device_ip=device_ip)
+        author = None if user.get("role") == "admin" else user.get("email")
+        return list_notes(scan_id=scan_id, device_ip=device_ip, author=author)
 
     # NOTE: registered before /api/notes/{note_id}/pdf so the static "export"
     # path is not swallowed by the {note_id} matcher.
@@ -634,7 +647,8 @@ def create_app() -> FastAPI:
         device_ip: Optional[str] = Query(None, max_length=45),
         user: dict = Depends(_get_current_user),
     ):
-        notes = list_notes(scan_id=scan_id, device_ip=device_ip)
+        author = None if user.get("role") == "admin" else user.get("email")
+        notes = list_notes(scan_id=scan_id, device_ip=device_ip, author=author)
         try:
             pdf_bytes = _generate_notes_pdf(notes)
         except Exception as exc:
@@ -651,10 +665,7 @@ def create_app() -> FastAPI:
         note_id: str = Depends(_validated_note_id),
         user: dict = Depends(_get_current_user),
     ):
-        note = get_note(note_id)
-        if note is None:
-            raise HTTPException(status_code=404, detail="note not found")
-        return note
+        return _note_owned_or_404(note_id, user)
 
     @app.patch("/api/notes/{note_id}", dependencies=[Depends(enforce_rate_limit)])
     async def update_note_endpoint(
@@ -662,6 +673,7 @@ def create_app() -> FastAPI:
         note_id: str = Depends(_validated_note_id),
         user: dict = Depends(_get_current_user),
     ):
+        _note_owned_or_404(note_id, user)
         note = update_note(
             note_id,
             title=payload.title,
@@ -679,6 +691,7 @@ def create_app() -> FastAPI:
         note_id: str = Depends(_validated_note_id),
         user: dict = Depends(_get_current_user),
     ):
+        _note_owned_or_404(note_id, user)
         if not delete_note(note_id):
             raise HTTPException(status_code=404, detail="note not found")
         _log_activity(user, "delete_note", detail=note_id)
@@ -689,9 +702,7 @@ def create_app() -> FastAPI:
         note_id: str = Depends(_validated_note_id),
         user: dict = Depends(_get_current_user),
     ):
-        note = get_note(note_id)
-        if note is None:
-            raise HTTPException(status_code=404, detail="note not found")
+        note = _note_owned_or_404(note_id, user)
         try:
             pdf_bytes = _generate_notes_pdf([note])
         except Exception as exc:
@@ -743,6 +754,14 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="user not found")
         if target["email"] == admin.get("email"):
             raise HTTPException(status_code=400, detail="Cannot delete yourself")
+        # Don't allow removing the last admin — that would lock everyone out of
+        # user management with no way back (audit F-076).
+        if target.get("role") == "admin":
+            admin_count = sum(1 for u in list_users() if u.get("role") == "admin")
+            if admin_count <= 1:
+                raise HTTPException(
+                    status_code=400, detail="Cannot delete the last admin account"
+                )
         delete_user(user_id)
         _log_activity(admin, "delete_user", detail=target["email"])
         return {"deleted": True, "user_id": user_id}
